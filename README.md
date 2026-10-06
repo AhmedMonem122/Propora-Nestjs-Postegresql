@@ -1,114 +1,139 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Propora
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A production-grade **multi-tenant property management SaaS** backend built with NestJS, Prisma, PostgreSQL (Neon) and Supabase Storage.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Propora lets property management companies manage their portfolio: organizations, properties, buildings, units, residents, leases, rent payments, maintenance requests and documents — with strict per-tenant data isolation and a full role-based access control (RBAC) system.
 
-## Description
+## Features
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- **Multi-tenancy** with automatic tenant isolation (AsyncLocalStorage) — every query is scoped to the caller's organization
+- **JWT authentication** with access + refresh token rotation (opaque refresh tokens, hashed at rest, httpOnly cookie)
+- **Full RBAC**: permission catalog (45 permissions), system roles per organization, custom roles with granular permission assignment
+- **Platform admin** (super admin) that manages organizations and their status across the whole platform
+- **Domain modules**: properties, buildings, units, residents, leases (with overlap validation), payments (overdue tracking), maintenance (assignment, status flow, notifications), documents
+- **Supabase Storage integration**: file upload/replace/delete kept in sync with database rows, tenant-scoped storage paths
+- **Reports**: financial summaries and occupancy rates per property
+- **Security**: Helmet, rate limiting (Throttler), CORS, body size limits, bcrypt password hashing, centralized exception filter
+- **OpenAPI/Swagger** documentation served at `/docs`
 
-## Project setup
+## Tech stack
 
-```bash
-$ npm install
+- NestJS 12 (TypeScript, ESM)
+- Prisma 6 + PostgreSQL (Neon serverless)
+- Supabase Storage (file upload)
+- Passport + JWT, bcryptjs
+- Vitest (unit + e2e), oxlint, Prettier
+- Deployed on Vercel
+
+## Architecture
+
+```
+src/
+  auth/            register, login, refresh, logout, me, change-password
+  rbac/            roles, permissions, permission cache
+  organizations/   organization profile and members
+  users/           member invite, roles assignment, activation
+  properties/      properties, buildings, units (nested routes)
+  residents/       residents CRUD and search
+  leases/          leases (overlap validation) + rent payments
+  maintenance/     requests, assignment, status flow
+  documents/       multipart upload, replace, metadata, delete
+  notifications/   in-app notifications
+  reports/         financial and occupancy reports
+  platform/        super-admin organization management
+  storage/         Supabase storage client
+  common/          guards, decorators, interceptors, filters, DTOs, utils
+  database/        PrismaService, TenantContextService (AsyncLocalStorage)
+  config/          env validation and typed ConfigModule
 ```
 
-## Compile and run the project
+**Tenant isolation**: `TenantContextInterceptor` stores the authenticated user in an `AsyncLocalStorage` context. Every service resolves `organizationId` from that context and applies it to all queries — a user can never read or write another organization's data.
+
+**RBAC**: `@RequirePermissions('lease:create')` and `@RequireAnyPermission([...])` decorators drive the `PermissionsGuard`. Permissions are cached per user for 30s and invalidated on role/permission changes. Organization owners implicitly hold `*` (all permissions).
+
+## Prerequisites
+
+- Node.js 22+
+- A Neon (or any) PostgreSQL connection string
+- A Supabase project (optional — documents module degrades gracefully if not configured)
+
+## Quick start
 
 ```bash
-# development
-$ npm run start
+npm install
+cp .env.example .env
+# edit .env: set DATABASE_URL (Neon), JWT_ACCESS_SECRET, SUPABASE_URL, SUPABASE_ANON_KEY
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm run db:push        # push schema to the database
+npm run db:seed        # seed permissions, super admin + demo organization
+npm run start:dev
 ```
 
-## Run tests
+The seed script creates:
+
+- Super admin (`SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD`, default `admin@propora.io` / `admin123456`) with the platform-level `PLATFORM_ADMIN` role
+- A demo organization `Demo Property Group` (owner `owner@demo.propora.io` / `demo123456`) with sample property, buildings, units, residents, active lease, payments, maintenance request and documents
+
+## API
+
+Base URL: `http://localhost:3000/api/v1` — interactive docs at `http://localhost:3000/docs`.
 
 ```bash
-# unit tests
-$ npm run test
+# register a new organization (returns accessToken + httpOnly refresh cookie)
+curl -X POST http://localhost:3000/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"organizationName":"Acme Properties","firstName":"Ahmed","lastName":"Monem","email":"a@acme.io","password":"Str0ng!Pass"}'
 
-# e2e tests
-$ npm run test:e2e
+# login
+curl -X POST http://localhost:3000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"a@acme.io","password":"Str0ng!Pass"}'
 
-# test coverage
-$ npm run test:cov
+# use the access token
+curl http://localhost:3000/api/v1/properties -H "Authorization: Bearer <accessToken>"
+
+# refresh the access token (rotation)
+curl -X POST http://localhost:3000/api/v1/auth/refresh -c cookies.txt -b cookies.txt
 ```
+
+### Permission catalog (examples)
+
+`property:read|create|update|delete`, `unit:*`, `resident:*`, `lease:*`, `payment:read|create|update`, `maintenance:read|create|update|assign|delete`, `document:read|create|update|delete`, `report:financial|occupancy`, `organization:read|update`, `user:read|create|update|delete`, `role:read|create|update|delete`, `platform:manage`
+
+### File upload
+
+```bash
+curl -X POST http://localhost:3000/api/v1/documents/upload \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@lease.pdf" -F "entityType=lease" -F "entityId=<leaseId>" -F "title=Lease contract"
+```
+
+Files are uploaded to Supabase under a tenant-scoped path (`<orgId>/<entityType>/<entityId>/<uuid>-<name>`). Replacing a document overwrites the same storage path; deleting a document removes the file from Supabase first, then the row.
+
+## Testing
+
+```bash
+npm run lint          # oxlint
+npm run typecheck     # tsc
+npm test              # 44 unit tests (vitest)
+DATABASE_URL="postgres://..." npm run test:e2e   # e2e suite (needs a real database)
+```
+
+The e2e suite boots the full application and verifies registration, tenant isolation between organizations, RBAC 403s and auth failures.
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+- **Vercel**: `vercel deploy` (see `vercel.json` — build outputs `dist`, start command `node dist/main.js`)
+- **Database**: Neon serverless Postgres (connection pooling friendly)
+- **Storage**: Supabase bucket `documents` (auto-created on boot when credentials are provided)
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Roadmap
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+- Webhooks + email notifications (Resend)
+- Audit log
+- Invoice generation (PDF)
+- Frontend dashboard (Next.js)
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Author
 
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Ahmed Monem — [GitHub](https://github.com/AhmedMonem122)
