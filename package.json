@@ -23,6 +23,7 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
@@ -47,12 +48,14 @@
     "class-validator": "^0.14.2",
     "compression": "^1.8.2",
     "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
     "helmet": "^8.3.0",
     "multer": "^2.4.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "serverless-http": "^4.0.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
