@@ -1,0 +1,417 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum PropertyType {
+  RESIDENTIAL
+  COMMERCIAL
+  MIXED_USE
+  INDUSTRIAL
+  LAND
+}
+
+enum PropertyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UnitStatus {
+  VACANT
+  OCCUPIED
+  UNDER_MAINTENANCE
+  INACTIVE
+}
+
+enum LeaseStatus {
+  UPCOMING
+  ACTIVE
+  ENDED
+  TERMINATED
+}
+
+enum PaymentFrequency {
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  REFUNDED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CASH
+  CARD
+  CHECK
+  ONLINE
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum MaintenanceStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum DocumentCategory {
+  LEASE
+  IDENTITY
+  UTILITY
+  INSPECTION
+  FINANCIAL
+  OTHER
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  ALERT
+}
+
+model Organization {
+  id        String             @id @default(cuid())
+  name      String
+  slug      String             @unique
+  status    OrganizationStatus @default(ACTIVE)
+  metadata  Json?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  users      User[]
+  roles      Role[]
+  properties Property[]
+  buildings  Building[]
+  units      Unit[]
+  residents  Resident[]
+  leases     Lease[]
+  payments   Payment[]
+  maintenanceRequests MaintenanceRequest[]
+  documents  Document[]
+  notifications Notification[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String     @id @default(cuid())
+  organizationId String?
+  email          String     @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  phone          String?
+  avatarUrl      String?
+  status         UserStatus @default(ACTIVE)
+  lastLoginAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization         Organization?          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userRoles            UserRole[]
+  refreshTokens        RefreshToken[]
+  assignedMaintenance  MaintenanceRequest[]   @relation("MaintenanceAssignee")
+  createdDocuments     Document[]           @relation("DocumentUploader")
+  notifications        Notification[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Role {
+  id             String    @id @default(cuid())
+  organizationId String?
+  name           String
+  description    String?
+  isSystem       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@unique([organizationId, name])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  resource    String
+  action      String
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Property {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  type           PropertyType   @default(RESIDENTIAL)
+  status         PropertyStatus @default(ACTIVE)
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  state          String?
+  country        String?
+  postalCode     String?
+  latitude       Float?
+  longitude      Float?
+  metadata       Json?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  buildings    Building[]
+
+  @@index([organizationId])
+  @@map("properties")
+}
+
+model Building {
+  id             String         @id @default(cuid())
+  organizationId String
+  propertyId     String
+  name           String
+  code           String?
+  totalFloors    Int?
+  status         PropertyStatus @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  units        Unit[]
+
+  @@index([organizationId, propertyId])
+  @@map("buildings")
+}
+
+model Unit {
+  id             String     @id @default(cuid())
+  organizationId String
+  buildingId     String
+  name           String
+  unitNumber     String?
+  type           String?
+  bedrooms       Int?
+  bathrooms      Float?
+  areaSqm        Float?
+  floor          Int?
+  rentAmount     Float?
+  depositAmount  Float?
+  status         UnitStatus @default(VACANT)
+  description    String?
+  metadata       Json?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  building            Building            @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  leases              Lease[]
+  maintenanceRequests MaintenanceRequest[]
+
+  @@index([organizationId, buildingId])
+  @@map("units")
+}
+
+model Resident {
+  id               String   @id @default(cuid())
+  organizationId   String
+  firstName        String
+  lastName         String
+  email            String?
+  phone            String?
+  emergencyContact String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leases       Lease[]
+  maintenanceRequests MaintenanceRequest[]
+
+  @@index([organizationId])
+  @@map("residents")
+}
+
+model Lease {
+  id               String           @id @default(cuid())
+  organizationId   String
+  unitId           String
+  residentId       String
+  startDate        DateTime
+  endDate          DateTime?
+  rentAmount       Float
+  depositAmount    Float            @default(0)
+  paymentFrequency PaymentFrequency @default(MONTHLY)
+  status           LeaseStatus      @default(UPCOMING)
+  notes            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  resident     Resident     @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  payments     Payment[]
+
+  @@index([organizationId, unitId])
+  @@index([organizationId, residentId])
+  @@map("leases")
+}
+
+model Payment {
+  id             String         @id @default(cuid())
+  organizationId String
+  leaseId        String
+  amount         Float
+  currency       String         @default("USD")
+  method         PaymentMethod  @default(BANK_TRANSFER)
+  status         PaymentStatus  @default(PENDING)
+  dueDate        DateTime
+  paidAt         DateTime?
+  invoiceNo      String?
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lease        Lease        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, leaseId])
+  @@index([organizationId, status])
+  @@map("payments")
+}
+
+model MaintenanceRequest {
+  id             String              @id @default(cuid())
+  organizationId String
+  unitId         String
+  residentId     String?
+  title          String
+  description    String?
+  priority       MaintenancePriority @default(MEDIUM)
+  status         MaintenanceStatus   @default(OPEN)
+  assignedToId   String?
+  scheduledAt    DateTime?
+  resolvedAt     DateTime?
+  cost           Float?
+  notes          String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit         Unit              @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  resident     Resident?         @relation(fields: [residentId], references: [id])
+  assignee     User?             @relation("MaintenanceAssignee", fields: [assignedToId], references: [id])
+
+  @@index([organizationId, unitId])
+  @@index([organizationId, status])
+  @@index([organizationId, assignedToId])
+  @@map("maintenance_requests")
+}
+
+model Document {
+  id             String           @id @default(cuid())
+  organizationId String
+  entityType     String
+  entityId       String
+  name           String
+  url            String
+  storagePath    String?
+  sizeBytes      Int?
+  mimeType       String?
+  category       DocumentCategory @default(OTHER)
+  uploadedById   String?
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploader     User?        @relation("DocumentUploader", fields: [uploadedById], references: [id])
+
+  @@index([organizationId, entityType, entityId])
+  @@map("documents")
+}
+
+model Notification {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String?
+  title          String
+  body           String
+  type           NotificationType @default(INFO)
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId])
+  @@map("notifications")
+}

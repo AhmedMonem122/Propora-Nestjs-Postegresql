@@ -1,0 +1,133 @@
+{
+  "permissions": [
+    { "name": "platform:manage", "resource": "platform", "action": "manage", "description": "Manage platform organizations, settings and monitoring" },
+
+    { "name": "organization:read", "resource": "organization", "action": "read", "description": "View organization profile and settings" },
+    { "name": "organization:update", "resource": "organization", "action": "update", "description": "Update organization profile and settings" },
+
+    { "name": "user:read", "resource": "user", "action": "read", "description": "List and view organization members" },
+    { "name": "user:create", "resource": "user", "action": "create", "description": "Invite organization members" },
+    { "name": "user:update", "resource": "user", "action": "update", "description": "Update organization members" },
+    { "name": "user:delete", "resource": "user", "action": "delete", "description": "Remove organization members" },
+
+    { "name": "role:read", "resource": "role", "action": "read", "description": "List and view roles" },
+    { "name": "role:create", "resource": "role", "action": "create", "description": "Create custom roles" },
+    { "name": "role:update", "resource": "role", "action": "update", "description": "Update roles and their permissions" },
+    { "name": "role:delete", "resource": "role", "action": "delete", "description": "Delete custom roles" },
+
+    { "name": "property:read", "resource": "property", "action": "read", "description": "View properties" },
+    { "name": "property:create", "resource": "property", "action": "create", "description": "Create properties" },
+    { "name": "property:update", "resource": "property", "action": "update", "description": "Update properties" },
+    { "name": "property:delete", "resource": "property", "action": "delete", "description": "Delete properties" },
+
+    { "name": "building:read", "resource": "building", "action": "read", "description": "View buildings" },
+    { "name": "building:create", "resource": "building", "action": "create", "description": "Create buildings" },
+    { "name": "building:update", "resource": "building", "action": "update", "description": "Update buildings" },
+    { "name": "building:delete", "resource": "building", "action": "delete", "description": "Delete buildings" },
+
+    { "name": "unit:read", "resource": "unit", "action": "read", "description": "View units" },
+    { "name": "unit:create", "resource": "unit", "action": "create", "description": "Create units" },
+    { "name": "unit:update", "resource": "unit", "action": "update", "description": "Update units" },
+    { "name": "unit:delete", "resource": "unit", "action": "delete", "description": "Delete units" },
+
+    { "name": "resident:read", "resource": "resident", "action": "read", "description": "View residents" },
+    { "name": "resident:create", "resource": "resident", "action": "create", "description": "Create residents" },
+    { "name": "resident:update", "resource": "resident", "action": "update", "description": "Update residents" },
+    { "name": "resident:delete", "resource": "resident", "action": "delete", "description": "Delete residents" },
+
+    { "name": "lease:read", "resource": "lease", "action": "read", "description": "View leases" },
+    { "name": "lease:create", "resource": "lease", "action": "create", "description": "Create leases" },
+    { "name": "lease:update", "resource": "lease", "action": "update", "description": "Update leases" },
+    { "name": "lease:delete", "resource": "lease", "action": "delete", "description": "Delete leases" },
+
+    { "name": "payment:read", "resource": "payment", "action": "read", "description": "View rent payments" },
+    { "name": "payment:create", "resource": "payment", "action": "create", "description": "Record rent payments" },
+    { "name": "payment:update", "resource": "payment", "action": "update", "description": "Update rent payments" },
+    { "name": "payment:delete", "resource": "payment", "action": "delete", "description": "Delete rent payments" },
+
+    { "name": "maintenance:read", "resource": "maintenance", "action": "read", "description": "View maintenance requests" },
+    { "name": "maintenance:create", "resource": "maintenance", "action": "create", "description": "Create maintenance requests" },
+    { "name": "maintenance:update", "resource": "maintenance", "action": "update", "description": "Update maintenance requests" },
+    { "name": "maintenance:delete", "resource": "maintenance", "action": "delete", "description": "Delete maintenance requests" },
+    { "name": "maintenance:assign", "resource": "maintenance", "action": "assign", "description": "Assign technicians and schedule work" },
+
+    { "name": "document:read", "resource": "document", "action": "read", "description": "View documents" },
+    { "name": "document:create", "resource": "document", "action": "create", "description": "Upload documents" },
+    { "name": "document:update", "resource": "document", "action": "update", "description": "Update document metadata or replace the uploaded file" },
+    { "name": "document:delete", "resource": "document", "action": "delete", "description": "Delete documents" },
+
+    { "name": "notification:read", "resource": "notification", "action": "read", "description": "View notifications" },
+    { "name": "notification:update", "resource": "notification", "action": "update", "description": "Mark notifications as read" },
+
+    { "name": "report:financial", "resource": "report", "action": "financial", "description": "View financial reports" },
+    { "name": "report:occupancy", "resource": "report", "action": "occupancy", "description": "View occupancy reports" }
+  ],
+  "roleTemplates": [
+    {
+      "name": "ORGANIZATION_OWNER",
+      "description": "Full access to everything inside the organization",
+      "permissions": ["*"]
+    },
+    {
+      "name": "PROPERTY_MANAGER",
+      "description": "Manages properties, buildings, units, residents, leases and maintenance",
+      "permissions": [
+        "organization:read",
+        "property:read", "property:create", "property:update", "property:delete",
+        "building:read", "building:create", "building:update", "building:delete",
+        "unit:read", "unit:create", "unit:update", "unit:delete",
+        "resident:read", "resident:create", "resident:update", "resident:delete",
+        "lease:read", "lease:create", "lease:update", "lease:delete",
+        "maintenance:read", "maintenance:create", "maintenance:update", "maintenance:delete", "maintenance:assign",
+        "document:read", "document:create", "document:update", "document:delete",
+        "notification:read", "notification:update"
+      ]
+    },
+    {
+      "name": "MAINTENANCE_MANAGER",
+      "description": "Handles maintenance requests, work orders and technicians",
+      "permissions": [
+        "organization:read",
+        "property:read",
+        "building:read",
+        "unit:read", "unit:update",
+        "resident:read",
+        "maintenance:read", "maintenance:create", "maintenance:update", "maintenance:delete", "maintenance:assign",
+        "document:read", "document:create",
+        "notification:read", "notification:update"
+      ]
+    },
+    {
+      "name": "ACCOUNTANT",
+      "description": "Handles rent, payments, invoices and financial reports",
+      "permissions": [
+        "organization:read",
+        "resident:read",
+        "unit:read",
+        "lease:read", "lease:create", "lease:update",
+        "payment:read", "payment:create", "payment:update", "payment:delete",
+        "report:financial", "report:occupancy",
+        "document:read",
+        "notification:read"
+      ]
+    },
+    {
+      "name": "STAFF",
+      "description": "Read-only access to the property portfolio",
+      "permissions": [
+        "property:read",
+        "building:read",
+        "unit:read",
+        "resident:read",
+        "lease:read",
+        "maintenance:read",
+        "notification:read"
+      ]
+    }
+  ],
+  "platformAdminRole": {
+    "name": "PLATFORM_ADMIN",
+    "description": "Propora platform administrator (not bound to any organization)",
+    "permissions": ["*"]
+  }
+}
