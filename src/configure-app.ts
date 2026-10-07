@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { rateLimitMiddleware } from './common/middleware/rate-limit.middleware.js';
 import { validateEnvironment } from './config/env-validation.js';
 
 export async function configureApp(app: INestApplication): Promise<void> {
@@ -9,6 +10,7 @@ export async function configureApp(app: INestApplication): Promise<void> {
   validateEnvironment(configService);
 
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  app.use(rateLimitMiddleware);
 
   app.enableCors({
     origin: configService.get<string>('CORS_ORIGIN', '*'),

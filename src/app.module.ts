@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { StorageModule } from './storage/storage.module.js';
@@ -29,15 +28,6 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
     ConfigModule,
     DatabaseModule,
     StorageModule,
-    ThrottlerModule.forRoot({
-      throttlers: [
-        {
-          name: 'default',
-          limit: 100,
-          ttl: 60,
-        },
-      ],
-    }),
     AuthModule,
     RbacModule,
     OrganizationsModule,
@@ -53,7 +43,6 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
   ],
   controllers: [HealthController],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },

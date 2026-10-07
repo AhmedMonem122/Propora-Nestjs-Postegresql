@@ -17,7 +17,6 @@ import {
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
-import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../common/types/authenticated-user.interface.js';
@@ -33,7 +32,6 @@ const COOKIE_PATH = '/api/v1/auth';
 
 @ApiTags('auth')
 @Controller('auth')
-@Throttle({ default: { limit: 10, ttl: 60 } })
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
