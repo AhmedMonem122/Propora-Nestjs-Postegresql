@@ -1,17 +1,11 @@
 {
-  "version": 2,
-  "buildCommand": "npm run build",
-  "installCommand": "npm install",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "{dist/openapi.yaml,node_modules/swagger-ui-dist/**}"
+      "includeFiles": "{node_modules/swagger-ui-dist/**,node_modules/@prisma/engines/**,node_modules/.prisma/**}"
     }
   },
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "api/index.ts",
-      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    }
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api" }
   ]
 }

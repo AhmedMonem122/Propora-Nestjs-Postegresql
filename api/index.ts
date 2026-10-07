@@ -33,7 +33,7 @@ async function bootstrap() {
   return cachedHandler;
 }
 
-export const handler = async (event: any, context: any) => {
-  const handler = await bootstrap();
-  return handler(event, context);
-};
+export default async function handler(event: any, context: any) {
+  const fn = await bootstrap();
+  return fn(event, context);
+}
