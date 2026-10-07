@@ -1,11 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "api/index.ts": {
-      "includeFiles": "{node_modules/swagger-ui-dist/**,node_modules/@prisma/engines/**,node_modules/.prisma/**}"
+  "buildCommand": "npm run build",
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.ts",
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     }
-  },
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/api" }
   ]
 }
