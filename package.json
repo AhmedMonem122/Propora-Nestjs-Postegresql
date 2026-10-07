@@ -5,6 +5,9 @@
   "author": "Ahmed Monem",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": "22.x"
+  },
   "type": "module",
   "prisma": {
     "seed": "node prisma/seed.mjs"

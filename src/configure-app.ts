@@ -8,6 +8,8 @@ export async function configureApp(app: INestApplication): Promise<void> {
 
   validateEnvironment(configService);
 
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   app.enableCors({
     origin: configService.get<string>('CORS_ORIGIN', '*'),
     credentials: true,
