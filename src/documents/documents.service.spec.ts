@@ -4,13 +4,14 @@ import {
   DocumentsService,
   type UploadedFile,
 } from '../../src/documents/documents.service.js';
+import type { UploadDocumentDto } from '../../src/documents/dto/document.dto.js';
 
 function createService() {
   const prisma = {
     document: {
       count: vi.fn().mockResolvedValue(0),
       findMany: vi.fn().mockResolvedValue([]),
-      create: vi.fn().mockImplementation(({ data }: { data: unknown }) =>
+      create: vi.fn().mockImplementation(({ data }: { data: object }) =>
         Promise.resolve({ id: 'doc-1', ...data }),
       ),
       findFirst: vi.fn().mockResolvedValue(null),
@@ -85,7 +86,7 @@ describe('DocumentsService', () => {
       'lease',
       'lease-1',
       file,
-      {},
+      {} as UploadDocumentDto,
     );
 
     expect(supabaseService.ensureBucket).toHaveBeenCalled();
@@ -114,7 +115,7 @@ describe('DocumentsService', () => {
     const { service } = createService();
 
     await expect(
-      service.uploadFile('invoice', 'invoice-1', file, {}),
+      service.uploadFile('invoice', 'invoice-1', file, {} as UploadDocumentDto),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -123,7 +124,7 @@ describe('DocumentsService', () => {
     prisma.property.findFirst.mockResolvedValue(null);
 
     await expect(
-      service.uploadFile('property', 'unknown-property', file, {}),
+      service.uploadFile('property', 'unknown-property', file, {} as UploadDocumentDto),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 

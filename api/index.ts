@@ -7,13 +7,17 @@ async function bootstrap() {
   if (!cachedHandler) {
     const { NestFactory } = await import('@nestjs/core');
     const { ExpressAdapter } = await import('@nestjs/platform-express');
-    const { AppModule } = await import('../dist/app.module.js');
+    const { AppModule } = await import('../src/app.module.js');
+    const { configureApp } = await import('../src/configure-app.js');
     const helmet = (await import('helmet')) as any;
     const compression = (await import('compression')) as any;
     const cookieParser = (await import('cookie-parser')) as any;
 
     const server = express();
-    const app = await NestFactory.create(AppModule, new ExpressAdapter(server));
+    const app = await NestFactory.create(
+      AppModule,
+      new ExpressAdapter(server),
+    );
 
     app.use((helmet.default ?? helmet)());
     app.use((compression.default ?? compression)());
@@ -21,7 +25,7 @@ async function bootstrap() {
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-    app.setGlobalPrefix('api/v1');
+    await configureApp(app);
 
     await app.init();
     cachedHandler = serverlessHttp(server);
