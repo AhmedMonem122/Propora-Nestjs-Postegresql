@@ -56,7 +56,27 @@ enum PaymentStatus {
   PENDING
   PAID
   OVERDUE
+  FAILED
   REFUNDED
+}
+
+enum PaymentType {
+  RENT
+  DEPOSIT
+  FEE
+  OTHER
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum ResidentStatus {
+  ACTIVE
+  INACTIVE
 }
 
 enum PaymentMethod {
@@ -97,13 +117,20 @@ enum NotificationType {
 }
 
 model Organization {
-  id        String             @id @default(cuid())
-  name      String
-  slug      String             @unique
-  status    OrganizationStatus @default(ACTIVE)
-  metadata  Json?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  id                 String             @id @default(cuid())
+  name               String
+  slug               String             @unique
+  description        String?
+  plan               String             @default("FREE")
+  subscriptionStatus SubscriptionStatus @default(TRIALING)
+  status             OrganizationStatus @default(ACTIVE)
+  platformManagerId  String?
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  platformManager PlatformUser? @relation(fields: [platformManagerId], references: [id], onDelete: SetNull)
+  settings OrganizationSetting?
 
   users      User[]
   roles      Role[]
@@ -116,8 +143,64 @@ model Organization {
   maintenanceRequests MaintenanceRequest[]
   documents  Document[]
   notifications Notification[]
+  auditLogs  AuditLog[]
+  webhookEndpoints WebhookEndpoint[]
 
+  @@index([platformManagerId])
   @@map("organizations")
+}
+
+model OrganizationSetting {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  logoUrl        String?
+  timezone       String   @default("UTC")
+  currency       String   @default("USD")
+  language       String   @default("en")
+  taxNumber      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_settings")
+}
+
+model PlatformAdmin {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  platformUsers PlatformUser[]
+  refreshTokens RefreshToken[]
+
+  @@map("platform_admins")
+}
+
+model PlatformUser {
+  id              String     @id @default(cuid())
+  platformAdminId String
+  userId          String?    @unique
+  email           String     @unique
+  firstName       String
+  lastName        String
+  phone           String?
+  status          UserStatus @default(ACTIVE)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  platformAdmin PlatformAdmin @relation(fields: [platformAdminId], references: [id], onDelete: Cascade)
+  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  managedOrganizations Organization[]
+
+  @@index([platformAdminId])
+  @@map("platform_users")
 }
 
 model User {
@@ -130,6 +213,7 @@ model User {
   phone          String?
   avatarUrl      String?
   status         UserStatus @default(ACTIVE)
+  tokenVersion   Int        @default(0)
   lastLoginAt    DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
@@ -140,6 +224,8 @@ model User {
   assignedMaintenance  MaintenanceRequest[]   @relation("MaintenanceAssignee")
   createdDocuments     Document[]           @relation("DocumentUploader")
   notifications        Notification[]
+  residentProfile      Resident?
+  platformProfile      PlatformUser?
 
   @@index([organizationId])
   @@map("users")
@@ -168,6 +254,8 @@ model Permission {
   resource    String
   action      String
   description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   rolePermissions RolePermission[]
 
@@ -177,6 +265,8 @@ model Permission {
 model UserRole {
   userId String
   roleId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -188,6 +278,8 @@ model UserRole {
 model RolePermission {
   roleId       String
   permissionId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
@@ -197,16 +289,19 @@ model RolePermission {
 }
 
 model RefreshToken {
-  id        String    @id @default(cuid())
-  userId    String
+  id              String    @id @default(cuid())
+  userId          String?
+  platformAdminId String?
   tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
   createdAt DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platformAdmin PlatformAdmin? @relation(fields: [platformAdminId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([platformAdminId])
   @@map("refresh_tokens")
 }
 
@@ -224,6 +319,7 @@ model Property {
   postalCode     String?
   latitude       Float?
   longitude      Float?
+  description    String?
   metadata       Json?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -242,6 +338,8 @@ model Building {
   name           String
   code           String?
   totalFloors    Int?
+  address        String?
+  description    String?
   status         PropertyStatus @default(ACTIVE)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -254,10 +352,23 @@ model Building {
   @@map("buildings")
 }
 
+model UnitType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  units Unit[]
+
+  @@map("unit_types")
+}
+
 model Unit {
   id             String     @id @default(cuid())
   organizationId String
   buildingId     String
+  unitTypeId     String?
   name           String
   unitNumber     String?
   type           String?
@@ -265,8 +376,8 @@ model Unit {
   bathrooms      Float?
   areaSqm        Float?
   floor          Int?
-  rentAmount     Float?
-  depositAmount  Float?
+  rentAmount     Decimal?   @db.Decimal(10, 2)
+  depositAmount  Decimal?   @db.Decimal(10, 2)
   status         UnitStatus @default(VACANT)
   description    String?
   metadata       Json?
@@ -275,26 +386,32 @@ model Unit {
 
   organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   building            Building            @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  unitType            UnitType?           @relation(fields: [unitTypeId], references: [id], onDelete: SetNull)
   leases              Lease[]
   maintenanceRequests MaintenanceRequest[]
 
   @@index([organizationId, buildingId])
+  @@index([unitTypeId])
   @@map("units")
 }
 
 model Resident {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   organizationId   String
+  userId           String?        @unique
   firstName        String
   lastName         String
   email            String?
   phone            String?
+  idNumber         String?
+  status           ResidentStatus @default(ACTIVE)
   emergencyContact String?
   notes            String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   leases       Lease[]
   maintenanceRequests MaintenanceRequest[]
 
@@ -309,8 +426,8 @@ model Lease {
   residentId       String
   startDate        DateTime
   endDate          DateTime?
-  rentAmount       Float
-  depositAmount    Float            @default(0)
+  rentAmount       Decimal          @db.Decimal(10, 2)
+  depositAmount    Decimal          @default(0) @db.Decimal(10, 2)
   paymentFrequency PaymentFrequency @default(MONTHLY)
   status           LeaseStatus      @default(UPCOMING)
   notes            String?
@@ -331,13 +448,18 @@ model Payment {
   id             String         @id @default(cuid())
   organizationId String
   leaseId        String
-  amount         Float
+  amount         Decimal        @db.Decimal(10, 2)
   currency       String         @default("USD")
+  type           PaymentType    @default(RENT)
   method         PaymentMethod  @default(BANK_TRANSFER)
   status         PaymentStatus  @default(PENDING)
   dueDate        DateTime
   paidAt         DateTime?
   invoiceNo      String?
+  transactionId  String?
+  provider       String?
+  providerRef    String?        @unique
+  checkoutUrl    String?
   notes          String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -362,7 +484,7 @@ model MaintenanceRequest {
   assignedToId   String?
   scheduledAt    DateTime?
   resolvedAt     DateTime?
-  cost           Float?
+  cost           Decimal?         @db.Decimal(10, 2)
   notes          String?
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
@@ -391,6 +513,7 @@ model Document {
   category       DocumentCategory @default(OTHER)
   uploadedById   String?
   createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   uploader     User?        @relation("DocumentUploader", fields: [uploadedById], references: [id])
@@ -414,4 +537,56 @@ model Notification {
 
   @@index([organizationId, userId])
   @@map("notifications")
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         String
+  entityType     String?
+  entityId       String?
+  metadata       Json?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@map("audit_logs")
+}
+
+model WebhookEndpoint {
+  id             String   @id @default(cuid())
+  organizationId String
+  url            String
+  secret         String
+  events         String[] @default([])
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveries   WebhookDelivery[]
+
+  @@index([organizationId])
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id         String   @id @default(cuid())
+  endpointId String
+  event      String
+  payload    Json
+  statusCode Int?
+  success    Boolean  @default(false)
+  attempts   Int      @default(0)
+  error      String?
+  createdAt  DateTime @default(now())
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([endpointId, createdAt])
+  @@map("webhook_deliveries")
 }

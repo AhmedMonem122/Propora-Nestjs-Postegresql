@@ -24,6 +24,12 @@ async function bootstrap() {
     server.use((helmet.default ?? helmet)());
     server.use((compression.default ?? compression)());
     server.use((cookieParser.default ?? cookieParser)());
+    // Stripe webhook signature verification needs the exact raw bytes;
+    // must run before express.json() (see src/main.ts).
+    server.use(
+      '/api/v1/billing/stripe/webhook',
+      express.raw({ type: 'application/json' }),
+    );
     server.use(express.json({ limit: '10mb' }));
     server.use(express.urlencoded({ extended: true, limit: '10mb' }));
 

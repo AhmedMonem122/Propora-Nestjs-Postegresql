@@ -6,6 +6,7 @@ import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { RbacModule } from '../rbac/rbac.module.js';
+import { AuditModule } from '../audit/audit.module.js';
 
 function durationToSeconds(duration: string): number {
   const match = /^(\d+)([smhd])$/.exec(duration);
@@ -34,6 +35,7 @@ function durationToSeconds(duration: string): number {
   imports: [
     PassportModule,
     RbacModule,
+    AuditModule,
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_ACCESS_SECRET'),

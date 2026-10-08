@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
+import { AuditEntity } from '../audit/audit.decorator.js';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
 import { PaymentsService } from './payments.service.js';
 import { CreatePaymentDto, UpdatePaymentDto } from './dto/payment.dto.js';
@@ -26,6 +27,7 @@ import { CreatePaymentDto, UpdatePaymentDto } from './dto/payment.dto.js';
 @ApiBearerAuth()
 @ApiTags('leases')
 @Controller()
+@AuditEntity('payment')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 

@@ -45,6 +45,9 @@ function createMocks(overrides: Record<string, unknown> = {}) {
     userRole: {
       create: vi.fn().mockResolvedValue({}),
     },
+    organizationSetting: {
+      create: vi.fn().mockResolvedValue({ id: 'settings-1' }),
+    },
   };
 
   const prisma = {
@@ -102,7 +105,15 @@ function createMocks(overrides: Record<string, unknown> = {}) {
     invalidateUserCache: vi.fn(),
   };
 
-  return { prisma, jwtService, configService, rbacService, tx };
+  const events = {
+    emit: vi.fn().mockResolvedValue(undefined),
+  };
+
+  const audit = {
+    log: vi.fn().mockResolvedValue({ id: 'audit-1' }),
+  };
+
+  return { prisma, jwtService, configService, rbacService, events, audit, tx };
 }
 
 function createService(overrides: Record<string, unknown> = {}) {
@@ -112,6 +123,8 @@ function createService(overrides: Record<string, unknown> = {}) {
     mocks.jwtService as never,
     mocks.configService as never,
     mocks.rbacService as never,
+    mocks.events as never,
+    mocks.audit as never,
   );
   return { service, ...mocks };
 }
@@ -266,6 +279,45 @@ describe('AuthService', () => {
       await expect(service.refresh('expired-token')).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
+    });
+
+    it('rejects an access token presented as a refresh token', async () => {
+      const { service, prisma } = createService();
+      const accessToken =
+        'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEifQ.c2lnbmF0dXJl';
+
+      await expect(service.refresh(accessToken)).rejects.toThrow(
+        /access tokens are not accepted/i,
+      );
+      expect(prisma.refreshToken.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('revokes the whole token family when a rotated token is reused', async () => {
+      const { service, prisma } = createService();
+
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        userId: 'user-1',
+        platformAdminId: null,
+        tokenHash: 'hash',
+        expiresAt: new Date(Date.now() + 86400000),
+        revokedAt: new Date(Date.now() - 1000),
+      });
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 3 });
+      prisma.user.update.mockResolvedValue({ id: 'user-1' });
+
+      await expect(service.refresh('stolen-refresh-token')).rejects.toThrow(
+        /reuse detected/i,
+      );
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { tokenVersion: { increment: 1 } },
+      });
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
     });
   });
 

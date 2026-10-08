@@ -17,12 +17,14 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
+import { AuditEntity } from '../audit/audit.decorator.js';
 import { BuildingsService } from './buildings.service.js';
 import { CreateBuildingDto, UpdateBuildingDto } from './dto/building.dto.js';
 
 @ApiBearerAuth()
 @ApiTags('properties')
 @Controller()
+@AuditEntity('building')
 export class BuildingsController {
   constructor(private readonly buildingsService: BuildingsService) {}
 

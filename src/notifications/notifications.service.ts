@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, NotificationType } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import {
   buildPaginationMeta,
   normalizePagination,
@@ -27,6 +28,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async findMine(query: NotificationListQuery) {
@@ -84,7 +86,7 @@ export class NotificationsService {
   }
 
   async createForUser(input: CreateNotificationInput) {
-    return this.prisma.notification.create({
+    const notification = await this.prisma.notification.create({
       data: {
         organizationId: input.organizationId,
         userId: input.userId,
@@ -93,5 +95,13 @@ export class NotificationsService {
         type: input.type ?? 'INFO',
       },
     });
+
+    // Persisted AND pushed: polling clients read the row, live clients get
+    // the broadcast. Publishing never throws, so this cannot fail the caller.
+    await this.realtime.publish(input.organizationId, 'notification.created', {
+      notification,
+    });
+
+    return notification;
   }
 }

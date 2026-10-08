@@ -60,7 +60,14 @@
     { "name": "notification:update", "resource": "notification", "action": "update", "description": "Mark notifications as read" },
 
     { "name": "report:financial", "resource": "report", "action": "financial", "description": "View financial reports" },
-    { "name": "report:occupancy", "resource": "report", "action": "occupancy", "description": "View occupancy reports" }
+    { "name": "report:occupancy", "resource": "report", "action": "occupancy", "description": "View occupancy reports" },
+
+    { "name": "audit:read", "resource": "audit", "action": "read", "description": "View the organization audit log" },
+
+    { "name": "webhook:read", "resource": "webhook", "action": "read", "description": "View outgoing webhook endpoints and deliveries" },
+    { "name": "webhook:create", "resource": "webhook", "action": "create", "description": "Register outgoing webhook endpoints" },
+    { "name": "webhook:update", "resource": "webhook", "action": "update", "description": "Update outgoing webhook endpoints" },
+    { "name": "webhook:delete", "resource": "webhook", "action": "delete", "description": "Delete outgoing webhook endpoints" }
   ],
   "roleTemplates": [
     {
@@ -80,7 +87,8 @@
         "lease:read", "lease:create", "lease:update", "lease:delete",
         "maintenance:read", "maintenance:create", "maintenance:update", "maintenance:delete", "maintenance:assign",
         "document:read", "document:create", "document:update", "document:delete",
-        "notification:read", "notification:update"
+        "notification:read", "notification:update",
+        "audit:read"
       ]
     },
     {
@@ -107,6 +115,7 @@
         "lease:read", "lease:create", "lease:update",
         "payment:read", "payment:create", "payment:update", "payment:delete",
         "report:financial", "report:occupancy",
+        "audit:read",
         "document:read",
         "notification:read"
       ]

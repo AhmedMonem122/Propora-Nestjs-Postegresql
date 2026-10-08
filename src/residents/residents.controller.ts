@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
+import { AuditEntity } from '../audit/audit.decorator.js';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
 import { ResidentsService } from './residents.service.js';
 import { CreateResidentDto, UpdateResidentDto } from './dto/resident.dto.js';
@@ -27,6 +28,7 @@ import { CreateResidentDto, UpdateResidentDto } from './dto/resident.dto.js';
 @ApiTags('residents')
 @Controller('residents')
 @RequirePermissions('resident:read')
+@AuditEntity('resident')
 export class ResidentsController {
   constructor(private readonly residentsService: ResidentsService) {}
 

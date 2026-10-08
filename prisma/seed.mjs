@@ -29,6 +29,111 @@ async function seedPermissions() {
   console.log(`Seeded ${catalog.permissions.length} permissions`);
 }
 
+async function syncSystemRolePermissions() {
+  const permissions = await prisma.permission.findMany({
+    select: { id: true },
+  });
+  const permissionIds = permissions.map((p) => p.id);
+
+  const systemRoles = await prisma.role.findMany({
+    where: {
+      OR: [
+        { organizationId: null, name: catalog.platformAdminRole.name },
+        { isSystem: true, name: 'ORGANIZATION_OWNER' },
+      ],
+    },
+    select: {
+      id: true,
+      rolePermissions: { select: { permissionId: true } },
+    },
+  });
+
+  let attached = 0;
+  for (const role of systemRoles) {
+    const existing = new Set(
+      role.rolePermissions.map((rp) => rp.permissionId),
+    );
+    const missing = permissionIds.filter((id) => !existing.has(id));
+    if (missing.length > 0) {
+      await prisma.rolePermission.createMany({
+        data: missing.map((permissionId) => ({
+          roleId: role.id,
+          permissionId,
+        })),
+        skipDuplicates: true,
+      });
+      attached += missing.length;
+    }
+  }
+  console.log(
+    `Synced ${attached} missing permissions onto ${systemRoles.length} system roles`,
+  );
+}
+
+const DEFAULT_UNIT_TYPES = [
+  { name: 'STUDIO', description: 'Open-plan studio apartment' },
+  { name: '1BR', description: 'One bedroom unit' },
+  { name: '2BR', description: 'Two bedroom unit' },
+  { name: '3BR', description: 'Three bedroom unit' },
+  { name: 'PENTHOUSE', description: 'Top-floor premium unit' },
+  { name: 'OFFICE', description: 'Commercial office space' },
+  { name: 'RETAIL', description: 'Retail shop space' },
+  { name: 'OTHER', description: 'Any other unit kind' },
+];
+
+async function seedUnitTypes() {
+  for (const unitType of DEFAULT_UNIT_TYPES) {
+    await prisma.unitType.upsert({
+      where: { name: unitType.name },
+      update: { description: unitType.description },
+      create: unitType,
+    });
+  }
+  console.log(`Seeded ${DEFAULT_UNIT_TYPES.length} unit types`);
+}
+
+async function seedOrganizationSettings() {
+  const organizations = await prisma.organization.findMany({
+    select: { id: true, settings: { select: { id: true } } },
+  });
+  const missing = organizations.filter((org) => !org.settings);
+
+  if (missing.length > 0) {
+    await prisma.organizationSetting.createMany({
+      data: missing.map((org) => ({ organizationId: org.id })),
+      skipDuplicates: true,
+    });
+  }
+  console.log(`Backfilled settings for ${missing.length} organizations`);
+}
+
+async function seedPlatformAdminAccount() {
+  const email = (
+    process.env.SUPER_ADMIN_EMAIL || 'admin@propora.io'
+  ).toLowerCase();
+  const password = process.env.SUPER_ADMIN_PASSWORD || 'admin123456';
+  const passwordHash = await bcryptjs.hash(password, 12);
+
+  await prisma.platformAdmin.upsert({
+    where: { email },
+    update: {
+      passwordHash,
+      firstName: 'Super',
+      lastName: 'Admin',
+      status: 'ACTIVE',
+    },
+    create: {
+      email,
+      passwordHash,
+      firstName: 'Super',
+      lastName: 'Admin',
+      status: 'ACTIVE',
+    },
+  });
+
+  console.log(`Seeded platform admin account: ${email}`);
+}
+
 async function seedPlatformAdmin() {
   let platformAdminRole = await prisma.role.findFirst({
     where: { organizationId: null, name: catalog.platformAdminRole.name },
@@ -434,11 +539,16 @@ async function seedDemoOrganization() {
 
 async function main() {
   await seedPermissions();
+  await syncSystemRolePermissions();
   await seedPlatformAdmin();
+  await seedPlatformAdminAccount();
 
   if ((process.env.DEMO_ORGANIZATION || 'true') !== 'false') {
     await seedDemoOrganization();
   }
+
+  await seedUnitTypes();
+  await seedOrganizationSettings();
 }
 
 main()

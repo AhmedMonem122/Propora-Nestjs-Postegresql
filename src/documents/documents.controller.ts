@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -23,9 +24,45 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
+import { AuditEntity } from '../audit/audit.decorator.js';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
 import { DocumentCategory } from '@prisma/client';
 import { DocumentsService, type UploadedFile as UploadedFileModel } from './documents.service.js';
+
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+
+const ALLOWED_MIMETYPES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+  'text/csv',
+]);
+
+const uploadOptions = {
+  limits: { fileSize: MAX_FILE_BYTES },
+  fileFilter: (
+    _req: unknown,
+    file: { mimetype: string },
+    callback: (error: Error | null, accept: boolean) => void,
+  ) => {
+    if (!ALLOWED_MIMETYPES.has(file.mimetype)) {
+      callback(
+        new BadRequestException(
+          `File type "${file.mimetype}" is not allowed`,
+        ),
+        false,
+      );
+      return;
+    }
+    callback(null, true);
+  },
+};
 import {
   CreateDocumentDto,
   UpdateDocumentDto,
@@ -36,6 +73,7 @@ import {
 @ApiTags('documents')
 @Controller('documents')
 @RequirePermissions('document:read')
+@AuditEntity('document')
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
@@ -71,7 +109,7 @@ export class DocumentsController {
     summary: 'Upload a file to Supabase storage and attach it to any entity',
   })
   @ApiCreatedResponse({ description: 'Created document' })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', uploadOptions))
   uploadFile(@Body() dto: UploadDocumentDto, @UploadedFile() file: UploadedFileModel) {
     return this.documentsService.uploadFile(
       dto.entityType,
@@ -103,7 +141,7 @@ export class DocumentsController {
     summary: 'Replace the file in Supabase storage (overwrites the old file)',
   })
   @ApiOkResponse({ description: 'Updated document' })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', uploadOptions))
   replaceFile(@Param('id') id: string, @UploadedFile() file: UploadedFileModel) {
     return this.documentsService.replaceFile(id, file);
   }

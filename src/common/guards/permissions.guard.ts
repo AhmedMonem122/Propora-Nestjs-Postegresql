@@ -23,6 +23,11 @@ export class PermissionsGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
+    // Platform admins operate above tenancy: full access, no org roles needed.
+    if (user?.isPlatformAdmin && user?.platformAdminId) {
+      return true;
+    }
+
     if (!user?.userId) {
       throw new UnauthorizedException('Authentication required');
     }

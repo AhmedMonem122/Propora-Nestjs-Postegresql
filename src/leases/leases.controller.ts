@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
+import { AuditEntity } from '../audit/audit.decorator.js';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
 import { LeasesService } from './leases.service.js';
 import {
@@ -31,6 +32,7 @@ import {
 @ApiTags('leases')
 @Controller('leases')
 @RequirePermissions('lease:read')
+@AuditEntity('lease')
 export class LeasesController {
   constructor(private readonly leasesService: LeasesService) {}
 

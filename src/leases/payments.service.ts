@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
+import { BillingService } from '../billing/billing.service.js';
 import {
   buildPaginationMeta,
   normalizePagination,
@@ -26,6 +27,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
+    private readonly billing: BillingService,
   ) {}
 
   async findAll(query: PaymentListQuery) {
@@ -132,11 +134,12 @@ export class PaymentsService {
           ? new Date()
           : payment.paidAt;
 
-    return this.prisma.payment.update({
+    const updated = await this.prisma.payment.update({
       where: { id: paymentId },
       data: {
         amount: dto.amount,
         currency: dto.currency,
+        type: dto.type,
         method: dto.method,
         status: dto.status,
         dueDate: dto.dueDate,
@@ -146,6 +149,14 @@ export class PaymentsService {
       },
       include: { lease: { include: { unit: true, resident: true } } },
     });
+
+    // A manual "mark as paid" runs the same pipeline as an online payment:
+    // invoice, receipt notification, audit and domain event.
+    if (nextStatus === 'PAID' && payment.status !== 'PAID') {
+      return this.billing.completePaidSideEffects(paymentId);
+    }
+
+    return updated;
   }
 
   async remove(paymentId: string) {

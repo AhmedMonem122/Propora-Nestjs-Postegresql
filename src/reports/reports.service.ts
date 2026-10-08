@@ -22,6 +22,7 @@ export class ReportsService {
       overdue,
       totalUnits,
       occupiedUnits,
+      settings,
     ] = await Promise.all([
       this.prisma.lease.aggregate({
         where: { organizationId, status: 'ACTIVE' },
@@ -55,13 +56,17 @@ export class ReportsService {
       this.prisma.unit.count({
         where: { organizationId, status: 'OCCUPIED' },
       }),
+      this.prisma.organizationSetting.findUnique({
+        where: { organizationId },
+        select: { currency: true },
+      }),
     ]);
 
     return {
       period: {
         from: startOfMonth.toISOString(),
         to: now.toISOString(),
-        currency: 'DEFAULT_CURRENCY_OF_ORGANIZATION',
+        currency: settings?.currency ?? 'USD',
       },
       expectedMonthlyRent: expectedRent._sum.rentAmount ?? 0,
       collectedThisMonth: collectedThisMonth._sum.amount ?? 0,

@@ -10,7 +10,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaymentMethod, PaymentStatus } from '@prisma/client';
+import { PaymentMethod, PaymentStatus, PaymentType } from '@prisma/client';
 
 export class CreatePaymentDto {
   @ApiProperty({ example: 4500 })
@@ -23,6 +23,11 @@ export class CreatePaymentDto {
   @Length(3, 3)
   @IsOptional()
   currency?: string;
+
+  @ApiPropertyOptional({ enum: PaymentType, example: 'RENT' })
+  @IsEnum(PaymentType)
+  @IsOptional()
+  type?: PaymentType;
 
   @ApiPropertyOptional({ enum: PaymentMethod })
   @IsEnum(PaymentMethod)
@@ -70,6 +75,11 @@ export class UpdatePaymentDto {
   @Length(3, 3)
   @IsOptional()
   currency?: string;
+
+  @ApiPropertyOptional({ enum: PaymentType, example: 'RENT' })
+  @IsEnum(PaymentType)
+  @IsOptional()
+  type?: PaymentType;
 
   @ApiPropertyOptional({ enum: PaymentMethod })
   @IsEnum(PaymentMethod)

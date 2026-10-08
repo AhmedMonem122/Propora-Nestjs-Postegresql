@@ -29,6 +29,13 @@ export class CreateUnitDto {
   @IsOptional()
   type?: string;
 
+  @ApiPropertyOptional({
+    description: 'Unit-type catalog id (see GET /unit-types)',
+  })
+  @IsString()
+  @IsOptional()
+  unitTypeId?: string;
+
   @ApiPropertyOptional({ example: 2 })
   @IsInt()
   @IsOptional()
@@ -90,6 +97,13 @@ export class UpdateUnitDto {
   @MaxLength(60)
   @IsOptional()
   type?: string;
+
+  @ApiPropertyOptional({
+    description: 'Unit-type catalog id (see GET /unit-types)',
+  })
+  @IsString()
+  @IsOptional()
+  unitTypeId?: string;
 
   @ApiPropertyOptional({ example: 2 })
   @IsInt()

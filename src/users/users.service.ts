@@ -10,6 +10,7 @@ import bcryptjs from 'bcryptjs';
 import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
 import { RbacService } from '../rbac/rbac.service.js';
+import { EventBus } from '../common/events/event-bus.js';
 import {
   buildPaginationMeta,
   normalizePagination,
@@ -34,6 +35,7 @@ export class UsersService {
     private readonly tenantContext: TenantContextService,
     private readonly rbacService: RbacService,
     private readonly configService: ConfigService,
+    private readonly events: EventBus,
   ) {}
 
   async findAll(query: UserListQuery) {
@@ -120,6 +122,19 @@ export class UsersService {
       include: { userRoles: { include: { role: true } } },
     });
 
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true },
+    });
+
+    await this.events.emit('user.invited', {
+      organizationId,
+      organizationName: organization?.name ?? 'Propora',
+      email,
+      firstName: dto.firstName,
+      temporaryPassword: dto.password,
+    });
+
     return toUserResponse(user);
   }
 
@@ -138,7 +153,7 @@ export class UsersService {
     return toUserResponse(user);
   }
 
-  async update(userId: string, dto: UpdateUserDto, currentUserId: string) {
+  async update(userId: string, dto: UpdateUserDto, currentUserId: string | null) {
     const organizationId = this.tenantContext.requireOrganizationId();
 
     const user = await this.prisma.user.findFirst({
@@ -173,7 +188,7 @@ export class UsersService {
     return toUserResponse(updated);
   }
 
-  async remove(userId: string, currentUserId: string) {
+  async remove(userId: string, currentUserId: string | null) {
     const organizationId = this.tenantContext.requireOrganizationId();
 
     const user = await this.prisma.user.findFirst({
@@ -198,7 +213,7 @@ export class UsersService {
   async assignRoles(
     userId: string,
     dto: AssignRolesDto,
-    currentUserId: string,
+    currentUserId: string | null,
   ) {
     const organizationId = this.tenantContext.requireOrganizationId();
 

@@ -7,6 +7,7 @@ import {
   Post,
   Req,
   Res,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -44,9 +45,10 @@ export class AuthController {
   @ApiCreatedResponse({ type: AuthResponseDto })
   async register(
     @Body() dto: RegisterDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { tokens, user } = await this.authService.register(dto);
+    const { tokens, user } = await this.authService.register(dto, req.ip);
     this.setRefreshCookie(res, tokens.refreshToken, tokens.expiresAt);
     return this.toResponse(tokens, user);
   }
@@ -57,9 +59,10 @@ export class AuthController {
   @ApiOkResponse({ type: AuthResponseDto })
   async login(
     @Body() dto: LoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { tokens, user } = await this.authService.login(dto);
+    const { tokens, user } = await this.authService.login(dto, req.ip);
     this.setRefreshCookie(res, tokens.refreshToken, tokens.expiresAt);
     return this.toResponse(tokens, user);
   }
@@ -73,8 +76,11 @@ export class AuthController {
     @Body() dto: RefreshTokenDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = req.cookies?.[REFRESH_COOKIE] ?? dto.refreshToken;
-    const { tokens, user } = await this.authService.refresh(refreshToken);
+    const refreshToken = this.resolveRefreshToken(req, dto);
+    const { tokens, user } = await this.authService.refresh(
+      refreshToken,
+      req.ip,
+    );
     this.setRefreshCookie(res, tokens.refreshToken, tokens.expiresAt);
     return this.toResponse(tokens, user);
   }
@@ -88,8 +94,8 @@ export class AuthController {
     @Body() dto: RefreshTokenDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = req.cookies?.[REFRESH_COOKIE] ?? dto.refreshToken;
-    await this.authService.logout(refreshToken);
+    const refreshToken = this.resolveRefreshToken(req, dto, true);
+    await this.authService.logout(refreshToken, req.ip);
     res.clearCookie(REFRESH_COOKIE, { path: COOKIE_PATH });
   }
 
@@ -98,6 +104,9 @@ export class AuthController {
   @ApiOperation({ summary: 'Get the current authenticated user with roles and permissions' })
   @ApiOkResponse({ type: AuthResponseDto })
   async me(@CurrentUser() user: AuthenticatedUser) {
+    if (!user.userId) {
+      throw new UnauthorizedException('Organization account required');
+    }
     return this.authService.me(user.userId);
   }
 
@@ -108,8 +117,39 @@ export class AuthController {
   async changePassword(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ChangePasswordDto,
+    @Req() req: Request,
   ) {
-    await this.authService.changePassword(user.userId, dto);
+    if (!user.userId) {
+      throw new UnauthorizedException('Organization account required');
+    }
+    await this.authService.changePassword(user.userId, dto, req.ip);
+  }
+
+  /**
+   * The cookie is the primary transport; the body is a fallback for clients
+   * without cookies (mobile). When both are sent they MUST agree — silently
+   * preferring one over the other is what made "I sent my access token and
+   * still got a new token" possible.
+   */
+  private resolveRefreshToken(
+    req: Request,
+    dto: RefreshTokenDto,
+    optional = false,
+  ): string | undefined {
+    const fromCookie = req.cookies?.[REFRESH_COOKIE] as string | undefined;
+    const fromBody = dto.refreshToken;
+
+    if (fromCookie && fromBody && fromCookie !== fromBody) {
+      throw new UnauthorizedException(
+        'Conflicting refresh tokens: the cookie and the body do not match',
+      );
+    }
+
+    const token = fromCookie ?? fromBody;
+    if (!token && !optional) {
+      throw new UnauthorizedException('Refresh token is required');
+    }
+    return token;
   }
 
   private toResponse(tokens: { accessToken: string; expiresIn: number }, user: unknown) {
@@ -126,13 +166,28 @@ export class AuthController {
     refreshToken: string,
     expiresAt: Date,
   ) {
-    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const { sameSite, secure } = this.cookieOptions();
     res.cookie(REFRESH_COOKIE, refreshToken, {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
+      secure,
+      sameSite,
       maxAge: expiresAt.getTime() - Date.now(),
       path: COOKIE_PATH,
     });
+  }
+
+  /**
+   * Web + mobile on one backend, dashboard on another origin: cross-site
+   * cookies need `SameSite=None; Secure`, same-site deployments keep `Lax`.
+   */
+  private cookieOptions(): { sameSite: 'lax' | 'none'; secure: boolean } {
+    const configured = this.configService
+      .get<string>('COOKIE_SAMESITE', 'lax')
+      .toLowerCase();
+    if (configured === 'none') {
+      return { sameSite: 'none', secure: true };
+    }
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    return { sameSite: 'lax', secure: isProduction };
   }
 }

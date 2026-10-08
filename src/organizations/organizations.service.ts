@@ -7,6 +7,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
 import { UsersService } from '../users/users.service.js';
 import { UpdateOrganizationDto } from './dto/update-organization.dto.js';
+import { UpdateOrganizationSettingsDto } from './dto/update-organization-settings.dto.js';
 
 @Injectable()
 export class OrganizationsService {
@@ -22,6 +23,7 @@ export class OrganizationsService {
     return this.prisma.organization.findUnique({
       where: { id: organizationId },
       include: {
+        settings: true,
         _count: {
           select: { users: true, properties: true, roles: true },
         },
@@ -44,12 +46,51 @@ export class OrganizationsService {
       where: { id: organizationId },
       data: {
         name: dto.name,
+        description: dto.description,
         metadata: dto.metadata as Prisma.InputJsonValue | undefined,
       },
       include: {
+        settings: true,
         _count: {
           select: { users: true, properties: true, roles: true },
         },
+      },
+    });
+  }
+
+  async getSettings() {
+    const organizationId = this.tenantContext.requireOrganizationId();
+
+    const settings = await this.prisma.organizationSetting.findUnique({
+      where: { organizationId },
+    });
+
+    if (!settings) {
+      throw new NotFoundException('Organization settings not found');
+    }
+
+    return settings;
+  }
+
+  async updateSettings(dto: UpdateOrganizationSettingsDto) {
+    const organizationId = this.tenantContext.requireOrganizationId();
+
+    return this.prisma.organizationSetting.upsert({
+      where: { organizationId },
+      update: {
+        logoUrl: dto.logoUrl,
+        timezone: dto.timezone,
+        currency: dto.currency,
+        language: dto.language,
+        taxNumber: dto.taxNumber,
+      },
+      create: {
+        organizationId,
+        logoUrl: dto.logoUrl,
+        timezone: dto.timezone,
+        currency: dto.currency,
+        language: dto.language,
+        taxNumber: dto.taxNumber,
       },
     });
   }

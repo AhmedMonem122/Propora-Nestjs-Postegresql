@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
+import { Audit, AuditEntity } from '../audit/audit.decorator.js';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
 import { MaintenanceService } from './maintenance.service.js';
 import {
@@ -33,6 +34,7 @@ import {
 @ApiTags('maintenance')
 @Controller('maintenance')
 @RequirePermissions('maintenance:read')
+@AuditEntity('maintenance')
 export class MaintenanceController {
   constructor(private readonly maintenanceService: MaintenanceService) {}
 
@@ -82,6 +84,7 @@ export class MaintenanceController {
 
   @Post('requests/:id/assign')
   @RequirePermissions('maintenance:assign')
+  @Audit('maintenance.assign', { entity: 'maintenance' })
   @ApiOperation({ summary: 'Assign a technician and optionally schedule the visit' })
   @ApiOkResponse({ description: 'Assigned maintenance request' })
   assign(@Param('id') id: string, @Body() dto: AssignMaintenanceDto) {

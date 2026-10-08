@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { rateLimitMiddleware } from './common/middleware/rate-limit.middleware.js';
 import { validateEnvironment } from './config/env-validation.js';
+import { parseCorsSettings } from './config/cors.util.js';
 
 export async function configureApp(app: INestApplication): Promise<void> {
   const configService = app.get(ConfigService);
@@ -12,9 +13,13 @@ export async function configureApp(app: INestApplication): Promise<void> {
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.use(rateLimitMiddleware);
 
+  const cors = parseCorsSettings(
+    configService.get<string>('CORS_ORIGIN', '*'),
+    configService.get<string>('NODE_ENV', 'development'),
+  );
   app.enableCors({
-    origin: configService.get<string>('CORS_ORIGIN', '*'),
-    credentials: true,
+    origin: cors.origin as string,
+    credentials: cors.credentials,
   });
 
   app.setGlobalPrefix('api/v1');

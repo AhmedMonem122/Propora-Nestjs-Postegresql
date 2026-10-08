@@ -1,88 +1,96 @@
 # Propora
 
-A production-grade **multi-tenant property management SaaS** backend built with NestJS, Prisma, PostgreSQL (Neon) and Supabase Storage.
+A production-grade **multi-tenant property management SaaS** backend built with NestJS, Prisma, PostgreSQL (Neon) and Supabase.
 
-Propora lets property management companies manage their portfolio: organizations, properties, buildings, units, residents, leases, rent payments, maintenance requests and documents — with strict per-tenant data isolation and a full role-based access control (RBAC) system.
+Propora lets property management companies run their portfolio: organizations, properties, buildings, units, residents, leases, rent collection (Stripe + invoices), maintenance, documents, notifications — with strict per-tenant isolation, full RBAC, audit logging, outgoing webhooks and transactional email.
 
 ## Features
 
 - **Multi-tenancy** with automatic tenant isolation (AsyncLocalStorage) — every query is scoped to the caller's organization
-- **JWT authentication** with access + refresh token rotation (opaque refresh tokens, hashed at rest, httpOnly cookie)
-- **Full RBAC**: permission catalog (45 permissions), system roles per organization, custom roles with granular permission assignment
-- **Platform admin** (super admin) that manages organizations and their status across the whole platform
-- **Domain modules**: properties, buildings, units, residents, leases (with overlap validation), payments (overdue tracking), maintenance (assignment, status flow, notifications), documents
-- **Supabase Storage integration**: file upload/replace/delete kept in sync with database rows, tenant-scoped storage paths
-- **Reports**: financial summaries and occupancy rates per property
-- **Security**: Helmet, rate limiting (Throttler), CORS, body size limits, bcrypt password hashing, centralized exception filter
-- **OpenAPI/Swagger** documentation served at `/docs`
+- **JWT authentication**: short-lived access tokens + rotating opaque refresh tokens (hashed at rest, httpOnly cookie), refresh **reuse detection** (suspected theft revokes the whole token family), `tokenVersion` kills access tokens instantly on password change, strict cookie/body agreement on refresh
+- **Platform admins** (separate credential store + login) and **platform users** (organization managers assigned to tenants)
+- **Full RBAC**: permission catalog (53 permissions), system roles per organization, custom roles; platform admins bypass tenancy checks
+- **Online payments (Strategy pattern)**: Stripe Checkout (test mode) with verified webhooks, plus a built-in Fake provider for offline end-to-end testing — one `markPaid` pipeline for webhook/fake/manual, idempotent replays
+- **PDF invoices** auto-generated on every paid payment, stored in Supabase and linked as document rows, downloadable per payment
+- **Transactional email** (Brevo + Pug templates): welcome, invite, receipt, maintenance assignment, security alerts — skipped gracefully without keys
+- **Realtime notifications**: Supabase Realtime broadcast (works on Vercel serverless) + Socket.IO gateway for long-lived servers; same event contract for both
+- **Audit log**: decorator-driven (`@Audit` / `@AuditEntity`) + explicit auth/billing trails, queryable per organization
+- **Outgoing webhooks**: tenant endpoints with HMAC-SHA256 signatures, event subscriptions, delivery log, test pings, secret rotation
+- **Supabase Storage**: upload/replace/delete kept in sync with rows, tenant-scoped paths, mimetype allowlist + size limits
+- **Organization settings** (currency/timezone/language/logo/tax), **unit-type catalog**, resident↔user portal linking
+- **Money as DECIMAL(10,2)** end-to-end (responses normalized to numbers by a global interceptor)
+- **Security**: Helmet, custom rate limiting, hardened CORS (wildcard can never combine with credentials), env-driven cookie SameSite, bcrypt-12, global exception filter with Prisma error mapping
+- **OpenAPI/Swagger** at `/docs`
 
 ## Tech stack
 
-- NestJS 12 (TypeScript, ESM)
-- Prisma 6 + PostgreSQL (Neon serverless)
-- Supabase Storage (file upload)
-- Passport + JWT, bcryptjs
-- Vitest (unit + e2e), oxlint, Prettier
-- Deployed on Vercel
+- NestJS 12 (TypeScript, ESM) · Prisma 6 · PostgreSQL (Neon)
+- Supabase (Storage + Realtime) · Brevo (email) + Pug · Stripe · pdfkit · Socket.IO
+- Vitest (unit + e2e), oxlint, Prettier · Deployed on Vercel
 
 ## Architecture
 
 ```
 src/
-  auth/            register, login, refresh, logout, me, change-password
+  auth/            register, login, refresh (strict rotation), logout, me, change-password
+  platform/        platform-admin login, organizations, plans, platform users
   rbac/            roles, permissions, permission cache
-  organizations/   organization profile and members
-  users/           member invite, roles assignment, activation
+  organizations/   profile, members, settings (currency/timezone/…)
+  unit-types/      global unit-type catalog
+  users/           member invite (email), roles assignment
   properties/      properties, buildings, units (nested routes)
-  residents/       residents CRUD and search
-  leases/          leases (overlap validation) + rent payments
+  residents/       residents CRUD, portal-account linking
+  leases/          leases (overlap validation) + manual rent ledger
+  billing/         Strategy providers (Stripe/Fake), checkout, webhooks, invoices (PDF)
+  webhooks/        outgoing endpoints, HMAC dispatch, delivery log
   maintenance/     requests, assignment, status flow
-  documents/       multipart upload, replace, metadata, delete
-  notifications/   in-app notifications
-  reports/         financial and occupancy reports
-  platform/        super-admin organization management
-  storage/         Supabase storage client
-  common/          guards, decorators, interceptors, filters, DTOs, utils
-  database/        PrismaService, TenantContextService (AsyncLocalStorage)
-  config/          env validation and typed ConfigModule
+  documents/       multipart upload (validated), replace, metadata, delete
+  notifications/   in-app inbox + realtime fan-out
+  reports/         financial and occupancy reports (org currency)
+  audit/           @Audit/@AuditEntity interceptor + queryable log
+  mail/            Brevo + Pug templates, event-driven sending
+  realtime/        Supabase broadcast + Socket.IO (long-lived servers)
+  storage/         Supabase client (storage + broadcast)
+  common/          guards, decorators, interceptors, filters, events bus, DTOs, utils
+  database/        PrismaService (slow-query log), TenantContextService
+  config/          env validation, CORS policy
 ```
 
-**Tenant isolation**: `TenantContextInterceptor` stores the authenticated user in an `AsyncLocalStorage` context. Every service resolves `organizationId` from that context and applies it to all queries — a user can never read or write another organization's data.
+**Cross-cutting patterns**: global `ValidationPipe` (strict) · `AllExceptionsFilter` · `EventBus` (Observer: `payment.paid`, `maintenance.assigned`, `user.*` → mail/notify/webhooks) · Strategy (payments providers) + Factory (provider selection) · AOP via decorators/interceptors (tenancy, audit, request-id, logging, decimals).
 
-**RBAC**: `@RequirePermissions('lease:create')` and `@RequireAnyPermission([...])` decorators drive the `PermissionsGuard`. Permissions are cached per user for 30s and invalidated on role/permission changes. Organization owners implicitly hold `*` (all permissions).
+**Tenant isolation**: `TenantContextInterceptor` stores the user in `AsyncLocalStorage`; services resolve `organizationId` from it. Platform admins (`isPlatformAdmin`) operate above tenancy.
 
 ## Prerequisites
 
 - Node.js 22+
-- A Neon (or any) PostgreSQL connection string
-- A Supabase project (optional — documents module degrades gracefully if not configured)
+- PostgreSQL (Neon connection string)
+- Supabase project (optional — storage/realtime degrade gracefully)
+- Brevo API key (optional — emails are skipped with a warning without it)
+- Stripe test keys (optional — Fake provider covers offline testing)
 
 ## Quick start
 
 ```bash
 npm install
 cp .env.example .env
-# edit .env: set DATABASE_URL (Neon), JWT_ACCESS_SECRET, SUPABASE_URL, SUPABASE_ANON_KEY
+# edit .env: DATABASE_URL, JWT_ACCESS_SECRET, SUPABASE_*, BREVO_*, STRIPE_* …
 
-npm run db:push        # push schema to the database
-npm run db:seed        # seed permissions, super admin + demo organization
+npx prisma migrate deploy   # apply migrations (or: npm run db:push)
+npm run db:seed             # permissions, platform admin, unit types, demo org
 npm run start:dev
 ```
 
-The seed script creates:
-
-- Super admin (`SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD`, default `admin@propora.io` / `admin123456`) with the platform-level `PLATFORM_ADMIN` role
-- A demo organization `Demo Property Group` (owner `owner@demo.propora.io` / `demo123456`) with sample property, buildings, units, residents, active lease, payments, maintenance request and documents
+The seed creates a platform admin (`SUPER_ADMIN_EMAIL`/`SUPER_ADMIN_PASSWORD`, default `admin@propora.io` / `admin123456`), the permission catalog, unit types, and (unless `DEMO_ORGANIZATION=false`) a demo organization with sample data. The seed is idempotent — safe to re-run after upgrades to pick up new permissions.
 
 ## API
 
 Base URL: `http://localhost:3000/api/v1` — interactive docs at `http://localhost:3000/docs`.
 
 ```bash
-# register a new organization (returns accessToken + httpOnly refresh cookie)
+# register (returns accessToken + httpOnly refresh cookie)
 curl -X POST http://localhost:3000/api/v1/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"organizationName":"Acme Properties","firstName":"Ahmed","lastName":"Monem","email":"a@acme.io","password":"Str0ng!Pass"}'
+  -d '{"organizationName":"Acme","firstName":"Ahmed","lastName":"Monem","email":"a@acme.io","password":"Str0ng!Pass"}'
 
 # login
 curl -X POST http://localhost:3000/api/v1/auth/login \
@@ -92,47 +100,69 @@ curl -X POST http://localhost:3000/api/v1/auth/login \
 # use the access token
 curl http://localhost:3000/api/v1/properties -H "Authorization: Bearer <accessToken>"
 
-# refresh the access token (rotation)
+# refresh (cookie transport; body fallback for mobile — both must agree if sent)
 curl -X POST http://localhost:3000/api/v1/auth/refresh -c cookies.txt -b cookies.txt
+
+# platform admin login
+curl -X POST http://localhost:3000/api/v1/platform/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@propora.io","password":"admin123456"}'
 ```
 
-### Permission catalog (examples)
+### Online payments (test drive without Stripe keys)
 
-`property:read|create|update|delete`, `unit:*`, `resident:*`, `lease:*`, `payment:read|create|update`, `maintenance:read|create|update|assign|delete`, `document:read|create|update|delete`, `report:financial|occupancy`, `organization:read|update`, `user:read|create|update|delete`, `role:read|create|update|delete`, `platform:manage`
-
-### File upload
+`PAYMENTS_PROVIDER` defaults to `auto`: Stripe when `STRIPE_SECRET_KEY` is set, otherwise the Fake provider. Stripe **test mode is free and unlimited** — use test card `4242 4242 4242 4242`.
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/documents/upload \
-  -H "Authorization: Bearer <token>" \
-  -F "file=@lease.pdf" -F "entityType=lease" -F "entityId=<leaseId>" -F "title=Lease contract"
+# 1. create a checkout session for a PENDING payment
+curl -X POST http://localhost:3000/api/v1/payments/<paymentId>/checkout \
+  -H "Authorization: Bearer <token>"
+# → { checkoutUrl, provider }
+
+# 2a. Stripe: open checkoutUrl, pay with 4242…, webhook marks it PAID
+# 2b. Fake: open checkoutUrl (a confirm link) — same paid pipeline runs
+# 3. download the auto-generated invoice
+curl http://localhost:3000/api/v1/payments/<paymentId>/invoice \
+  -H "Authorization: Bearer <token>" -o invoice.pdf
 ```
 
-Files are uploaded to Supabase under a tenant-scoped path (`<orgId>/<entityType>/<entityId>/<uuid>-<name>`). Replacing a document overwrites the same storage path; deleting a document removes the file from Supabase first, then the row.
+Stripe webhooks: `POST /api/v1/billing/stripe/webhook` (signature verified against the raw body; configure `STRIPE_WEBHOOK_SECRET` and point `stripe listen` or the dashboard at it).
+
+### Outgoing webhooks
+
+Register `POST /webhooks { url, events? }` → the secret is returned **once**. Deliveries are signed (`X-Propora-Signature: sha256=<hmac>`, plus `X-Propora-Event` / `X-Propora-Delivery`), logged per attempt (`GET /webhooks/:id/deliveries`), testable (`POST /webhooks/:id/test`) and rotatable (`POST /webhooks/:id/rotate-secret`).
+
+### Realtime (frontend)
+
+```ts
+// Supabase Realtime (works on Vercel)
+supabase.channel(`propora:org:<orgId>`)
+  .on('broadcast', { event: '*' }, ({ event, payload }) => { /* … */ })
+  .subscribe();
+
+// Socket.IO (self-hosted backend with REALTIME_TRANSPORT=socketio)
+socket.emit('join', orgId, console.log);
+socket.on('notification.created', handler); // payment.paid, maintenance.assigned, …
+```
+
+### Permission catalog (53)
+
+`platform:manage`, `organization:read|update`, `user:*`, `role:*`, `property:*`, `building:*`, `unit:*`, `resident:*`, `lease:*`, `payment:read|create|update|delete`, `maintenance:*|assign`, `document:*`, `notification:read|update`, `report:financial|occupancy`, `audit:read`, `webhook:read|create|update|delete`.
 
 ## Testing
 
 ```bash
 npm run lint          # oxlint
 npm run typecheck     # tsc
-npm test              # 44 unit tests (vitest)
-DATABASE_URL="postgres://..." npm run test:e2e   # e2e suite (needs a real database)
+npm test              # unit tests (vitest)
+DATABASE_URL="postgres://..." npm run test:e2e   # e2e (needs a migrated database)
 ```
 
-The e2e suite boots the full application and verifies registration, tenant isolation between organizations, RBAC 403s and auth failures.
+## Deployment (Vercel)
 
-## Deployment
-
-- **Vercel**: `vercel deploy` (see `vercel.json` — build outputs `dist`, start command `node dist/main.js`)
-- **Database**: Neon serverless Postgres (connection pooling friendly)
-- **Storage**: Supabase bucket `documents` (auto-created on boot when credentials are provided)
-
-## Roadmap
-
-- Webhooks + email notifications (Resend)
-- Audit log
-- Invoice generation (PDF)
-- Frontend dashboard (Next.js)
+- `vercel deploy` — `vercel.json` routes everything to `api/index.ts`, ships Swagger UI assets + mail templates via `includeFiles`
+- Database: run migrations against Neon (`npx prisma migrate deploy` with the production `DATABASE_URL`), then `npm run db:seed` once per upgrade for new permissions/catalogs
+- Set production env vars: `JWT_ACCESS_SECRET`, `CORS_ORIGIN` (dashboard origin — never `*` with cookies), `COOKIE_SAMESITE=none` for cross-origin cookies, `SUPABASE_*`, `BREVO_API_KEY`, `STRIPE_*`, `FRONTEND_URL`/`APP_PUBLIC_URL`
 
 ## Author
 

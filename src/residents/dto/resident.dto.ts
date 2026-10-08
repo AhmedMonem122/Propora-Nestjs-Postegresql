@@ -1,13 +1,22 @@
 import {
   IsEmail,
+  IsEnum,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ResidentStatus } from '@prisma/client';
 
 export class CreateResidentDto {
+  @ApiPropertyOptional({
+    description: 'Linked portal user account (must belong to the organization)',
+  })
+  @IsString()
+  @IsOptional()
+  userId?: string;
+
   @ApiProperty({ example: 'Ahmed' })
   @IsString()
   @MinLength(1)
@@ -31,6 +40,17 @@ export class CreateResidentDto {
   @IsOptional()
   phone?: string;
 
+  @ApiPropertyOptional({ example: 'EG-29001010123456' })
+  @IsString()
+  @MaxLength(50)
+  @IsOptional()
+  idNumber?: string;
+
+  @ApiPropertyOptional({ enum: ResidentStatus })
+  @IsEnum(ResidentStatus)
+  @IsOptional()
+  status?: ResidentStatus;
+
   @ApiPropertyOptional({ example: 'Sara Monem - +201009876543' })
   @IsString()
   @MaxLength(120)
@@ -45,6 +65,13 @@ export class CreateResidentDto {
 }
 
 export class UpdateResidentDto {
+  @ApiPropertyOptional({
+    description: 'Linked portal user account (must belong to the organization)',
+  })
+  @IsString()
+  @IsOptional()
+  userId?: string | null;
+
   @ApiPropertyOptional({ example: 'Ahmed' })
   @IsString()
   @IsOptional()
@@ -69,6 +96,17 @@ export class UpdateResidentDto {
   @MaxLength(30)
   @IsOptional()
   phone?: string;
+
+  @ApiPropertyOptional({ example: 'EG-29001010123456' })
+  @IsString()
+  @MaxLength(50)
+  @IsOptional()
+  idNumber?: string;
+
+  @ApiPropertyOptional({ enum: ResidentStatus })
+  @IsEnum(ResidentStatus)
+  @IsOptional()
+  status?: ResidentStatus;
 
   @ApiPropertyOptional()
   @IsString()

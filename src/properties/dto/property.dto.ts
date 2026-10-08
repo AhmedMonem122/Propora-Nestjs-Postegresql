@@ -68,6 +68,12 @@ export class CreatePropertyDto {
   @IsOptional()
   longitude?: number;
 
+  @ApiPropertyOptional({ example: 'Gated community with 24/7 security' })
+  @IsString()
+  @MaxLength(2000)
+  @IsOptional()
+  description?: string;
+
   @ApiPropertyOptional({ example: { parking: true } })
   @IsObject()
   @IsOptional()
@@ -137,6 +143,12 @@ export class UpdatePropertyDto {
   @IsNumber()
   @IsOptional()
   longitude?: number;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @MaxLength(2000)
+  @IsOptional()
+  description?: string;
 
   @ApiPropertyOptional()
   @IsObject()

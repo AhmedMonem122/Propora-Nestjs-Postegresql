@@ -27,6 +27,18 @@ export class CreateBuildingDto {
   @IsOptional()
   totalFloors?: number;
 
+  @ApiPropertyOptional({ example: '12 Nile Corniche, Tower B entrance' })
+  @IsString()
+  @MaxLength(300)
+  @IsOptional()
+  address?: string;
+
+  @ApiPropertyOptional({ example: 'Residential tower with 2 elevators' })
+  @IsString()
+  @MaxLength(2000)
+  @IsOptional()
+  description?: string;
+
   @ApiPropertyOptional({ enum: PropertyStatus })
   @IsEnum(PropertyStatus)
   @IsOptional()
@@ -51,6 +63,18 @@ export class UpdateBuildingDto {
   @IsInt()
   @IsOptional()
   totalFloors?: number;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @MaxLength(300)
+  @IsOptional()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @MaxLength(2000)
+  @IsOptional()
+  description?: string;
 
   @ApiPropertyOptional({ enum: PropertyStatus })
   @IsEnum(PropertyStatus)

@@ -68,6 +68,7 @@ export class UnitsService {
     const organizationId = this.tenantContext.requireOrganizationId();
 
     await this.assertBuildingInOrganization(buildingId, organizationId);
+    await this.assertUnitType(dto.unitTypeId);
 
     return this.prisma.unit.create({
       data: { ...dto, organizationId, buildingId },
@@ -80,6 +81,7 @@ export class UnitsService {
     const unit = await this.prisma.unit.findFirst({
       where: { id: unitId, organizationId },
       include: {
+        unitType: true,
         building: {
           include: { property: { select: { name: true, id: true } } },
         },
@@ -107,6 +109,8 @@ export class UnitsService {
     if (!unit) {
       throw new NotFoundException('Unit not found');
     }
+
+    await this.assertUnitType(dto.unitTypeId);
 
     return this.prisma.unit.update({
       where: { id: unitId },
@@ -140,6 +144,20 @@ export class UnitsService {
 
     if (!building) {
       throw new NotFoundException('Building not found');
+    }
+  }
+
+  private async assertUnitType(unitTypeId?: string): Promise<void> {
+    if (!unitTypeId) {
+      return;
+    }
+
+    const unitType = await this.prisma.unitType.findUnique({
+      where: { id: unitTypeId },
+    });
+
+    if (!unitType) {
+      throw new NotFoundException('Unit type not found');
     }
   }
 }

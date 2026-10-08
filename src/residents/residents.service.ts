@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
@@ -57,6 +61,8 @@ export class ResidentsService {
   async create(dto: CreateResidentDto) {
     const organizationId = this.tenantContext.requireOrganizationId();
 
+    await this.assertResidentUser(dto.userId, organizationId);
+
     return this.prisma.resident.create({
       data: { ...dto, organizationId },
     });
@@ -94,6 +100,8 @@ export class ResidentsService {
       throw new NotFoundException('Resident not found');
     }
 
+    await this.assertResidentUser(dto.userId, organizationId, residentId);
+
     return this.prisma.resident.update({
       where: { id: residentId },
       data: { ...dto },
@@ -114,5 +122,44 @@ export class ResidentsService {
     await this.prisma.resident.delete({ where: { id: residentId } });
 
     return { id: residentId, deleted: true };
+  }
+
+  /**
+   * A resident profile may be linked to exactly one portal account, and that
+   * account must belong to the same organization (tenant isolation).
+   */
+  private async assertResidentUser(
+    userId: string | null | undefined,
+    organizationId: string,
+    excludeResidentId?: string,
+  ): Promise<void> {
+    if (!userId) {
+      return;
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, organizationId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new BadRequestException(
+        'Linked user must be a member of your organization',
+      );
+    }
+
+    const taken = await this.prisma.resident.findFirst({
+      where: {
+        userId,
+        ...(excludeResidentId ? { id: { not: excludeResidentId } } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (taken) {
+      throw new BadRequestException(
+        'This user account is already linked to another resident',
+      );
+    }
   }
 }

@@ -7,6 +7,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
+import { AuditEntity } from '../audit/audit.decorator.js';
 import { RoleResponseDto } from '../common/dto/role-response.dto.js';
 import { RolesService } from './roles.service.js';
 import { RbacService } from './rbac.service.js';
@@ -17,6 +18,7 @@ import { UpdateRoleDto } from './dto/update-role.dto.js';
 @ApiTags('rbac')
 @Controller('roles')
 @RequirePermissions('role:read')
+@AuditEntity('role')
 export class RolesController {
   constructor(
     private readonly rolesService: RolesService,

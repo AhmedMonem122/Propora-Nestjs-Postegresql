@@ -8,6 +8,8 @@ export interface JwtPayload {
   sub: string;
   organizationId: string | null;
   email: string;
+  tokenVersion?: number;
+  platformAdminId?: string | null;
 }
 
 @Injectable()
@@ -30,6 +32,24 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: JwtPayload) {
+    if (payload.platformAdminId) {
+      const admin = await this.prisma.platformAdmin.findUnique({
+        where: { id: payload.platformAdminId },
+      });
+
+      if (!admin || admin.status !== 'ACTIVE') {
+        throw new UnauthorizedException('Platform admin is no longer active');
+      }
+
+      return {
+        userId: null,
+        platformAdminId: admin.id,
+        organizationId: null,
+        email: admin.email,
+        isPlatformAdmin: true,
+      };
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
@@ -42,10 +62,18 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Invalid token claims');
     }
 
+    // Tokens issued before a password change carry an older version and are
+    // rejected immediately instead of lingering until expiry.
+    if ((payload.tokenVersion ?? 0) !== user.tokenVersion) {
+      throw new UnauthorizedException('Token has been revoked');
+    }
+
     return {
       userId: user.id,
+      platformAdminId: null,
       organizationId: user.organizationId,
       email: user.email,
+      isPlatformAdmin: false,
     };
   }
 }

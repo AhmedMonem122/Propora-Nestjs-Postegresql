@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
+import { AuditEntity } from '../audit/audit.decorator.js';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
 import { UnitsService } from './units.service.js';
 import { CreateUnitDto, UpdateUnitDto } from './dto/unit.dto.js';
@@ -26,6 +27,7 @@ import { CreateUnitDto, UpdateUnitDto } from './dto/unit.dto.js';
 @ApiBearerAuth()
 @ApiTags('properties')
 @Controller()
+@AuditEntity('unit')
 export class UnitsController {
   constructor(private readonly unitsService: UnitsService) {}
 

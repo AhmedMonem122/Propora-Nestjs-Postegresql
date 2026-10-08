@@ -79,6 +79,63 @@ export class SupabaseService {
     return data.publicUrl;
   }
 
+  /**
+   * Sends a Realtime broadcast message (server → subscribed frontends).
+   * Opens a throwaway channel, waits for the join (bounded), sends,
+   * then cleans up — safe to call from short-lived serverless functions.
+   */
+  async broadcast(
+    channelName: string,
+    event: string,
+    payload: Record<string, unknown>,
+  ): Promise<boolean> {
+    const client = this.getClient();
+    const channel = client.channel(channelName);
+
+    try {
+      await this.waitForSubscribed(channel);
+      const result = await channel.send({
+        type: 'broadcast',
+        event,
+        payload,
+      });
+      return result === 'ok';
+    } finally {
+      await client.removeChannel(channel).catch(() => undefined);
+    }
+  }
+
+  private waitForSubscribed(channel: {
+    subscribe: (callback: (status: string) => void) => unknown;
+  }): Promise<void> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      };
+      const timer = setTimeout(done, 5000);
+      try {
+        channel.subscribe((status: string) => {
+          if (
+            status === 'SUBSCRIBED' ||
+            status === 'CHANNEL_ERROR' ||
+            status === 'TIMED_OUT' ||
+            status === 'CLOSED'
+          ) {
+            clearTimeout(timer);
+            done();
+          }
+        });
+      } catch {
+        clearTimeout(timer);
+        done();
+      }
+    });
+  }
+
   isConfigured(): boolean {
     return Boolean(
       this.configService.get<string>('SUPABASE_URL') &&

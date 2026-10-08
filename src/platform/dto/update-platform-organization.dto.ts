@@ -1,10 +1,28 @@
-import { IsEnum, IsNotEmpty } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { OrganizationStatus } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { OrganizationStatus, SubscriptionStatus } from '@prisma/client';
 
 export class UpdatePlatformOrganizationDto {
-  @ApiProperty({ enum: OrganizationStatus, example: 'SUSPENDED' })
+  @ApiPropertyOptional({ enum: OrganizationStatus, example: 'SUSPENDED' })
   @IsEnum(OrganizationStatus)
-  @IsNotEmpty()
-  status: OrganizationStatus;
+  @IsOptional()
+  status?: OrganizationStatus;
+
+  @ApiPropertyOptional({ example: 'PRO', description: 'Billing plan name' })
+  @IsString()
+  @MaxLength(50)
+  @IsOptional()
+  plan?: string;
+
+  @ApiPropertyOptional({ enum: SubscriptionStatus })
+  @IsEnum(SubscriptionStatus)
+  @IsOptional()
+  subscriptionStatus?: SubscriptionStatus;
+
+  @ApiPropertyOptional({
+    description: 'Assign a platform user as organization manager (null unassigns)',
+  })
+  @IsString()
+  @IsOptional()
+  platformManagerId?: string | null;
 }

@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
+import { AuditEntity } from '../audit/audit.decorator.js';
 import type { AuthenticatedUser } from '../common/types/authenticated-user.interface.js';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
 import { UserResponseDto } from '../common/dto/user-response.dto.js';
@@ -32,6 +33,7 @@ import { AssignRolesDto } from './dto/assign-roles.dto.js';
 @ApiTags('users')
 @Controller('users')
 @RequirePermissions('user:read')
+@AuditEntity('user')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 

@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { EventBus } from '../common/events/event-bus.js';
 import {
   buildPaginationMeta,
   normalizePagination,
@@ -36,6 +37,7 @@ export class MaintenanceService {
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
     private readonly notificationsService: NotificationsService,
+    private readonly events: EventBus,
   ) {}
 
   async findAll(query: MaintenanceListQuery) {
@@ -176,7 +178,6 @@ export class MaintenanceService {
       },
       include: { unit: true, resident: true, assignee: true },
     });
-
     await this.notificationsService.createForUser({
       userId: assignee.id,
       organizationId,
@@ -187,6 +188,14 @@ export class MaintenanceService {
           : ''
       }.`,
       type: 'INFO',
+    });
+
+    await this.events.emit('maintenance.assigned', {
+      organizationId,
+      requestId,
+      assigneeId: assignee.id,
+      assigneeEmail: assignee.email,
+      title: request.title,
     });
 
     return updated;
