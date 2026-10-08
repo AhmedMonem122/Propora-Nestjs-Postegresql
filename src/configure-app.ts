@@ -38,6 +38,12 @@ export async function configureApp(app: INestApplication): Promise<void> {
       .build();
 
     const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('docs', app, document);
+    // Pin the Swagger UI assets to a CWD-relative path so it also resolves
+    // inside the Vercel serverless bundle (where the files are shipped via
+    // `functions."api/index.ts".includeFiles`), instead of relying on the
+    // swagger-ui-dist package __dirname.
+    SwaggerModule.setup('docs', app, document, {
+      customSwaggerUiPath: 'node_modules/swagger-ui-dist',
+    });
   }
 }
