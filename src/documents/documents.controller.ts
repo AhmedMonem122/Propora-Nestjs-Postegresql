@@ -19,14 +19,12 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { AuditEntity } from '../audit/audit.decorator.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
-import { DocumentCategory } from '@prisma/client';
+import { DocumentQueryDto } from './dto/document-query.dto.js';
 import { DocumentsService, type UploadedFile as UploadedFileModel } from './documents.service.js';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -79,18 +77,8 @@ export class DocumentsController {
 
   @Get()
   @ApiOperation({ summary: 'List documents (filter by attached entity)' })
-  @ApiQuery({ name: 'entityType', required: false })
-  @ApiQuery({ name: 'entityId', required: false })
-  @ApiQuery({ name: 'category', required: false })
   @ApiOkResponse({ description: 'Paginated documents' })
-  findAll(
-    @Query()
-    query: PaginationQueryDto & {
-      entityType?: string;
-      entityId?: string;
-      category?: DocumentCategory;
-    },
-  ) {
+  findAll(@Query() query: DocumentQueryDto) {
     return this.documentsService.findAll(query);
   }
 

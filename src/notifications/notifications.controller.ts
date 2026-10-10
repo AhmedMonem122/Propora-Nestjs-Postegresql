@@ -12,12 +12,11 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
 import { NotificationsService } from './notifications.service.js';
+import { NotificationQueryDto } from './dto/notification-query.dto.js';
 
 @ApiBearerAuth()
 @ApiTags('notifications')
@@ -28,15 +27,9 @@ export class NotificationsController {
 
   @Get()
   @ApiOperation({ summary: 'List my notifications' })
-  @ApiQuery({ name: 'unreadOnly', required: false })
   @ApiOkResponse({ description: 'Paginated notifications' })
-  findMine(
-    @Query() query: PaginationQueryDto & { unreadOnly?: boolean | string },
-  ) {
-    return this.notificationsService.findMine({
-      ...query,
-      unreadOnly: query.unreadOnly === true || query.unreadOnly === 'true',
-    });
+  findMine(@Query() query: NotificationQueryDto) {
+    return this.notificationsService.findMine(query);
   }
 
   @Patch(':id/read')

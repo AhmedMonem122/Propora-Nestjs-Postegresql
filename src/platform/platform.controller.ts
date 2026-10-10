@@ -15,7 +15,6 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
@@ -33,6 +32,7 @@ import {
   CreateManagedUserDto,
   UpdateManagedUserDto,
 } from './dto/platform-manage-user.dto.js';
+import { PlatformOrganizationQueryDto } from './dto/platform-organization-query.dto.js';
 
 @ApiBearerAuth()
 @ApiTags('platform')
@@ -43,16 +43,8 @@ export class PlatformController {
 
   @Get('organizations')
   @ApiOperation({ summary: 'List all organizations on the platform' })
-  @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'SUSPENDED'] })
-  @ApiQuery({ name: 'search', required: false })
   @ApiOkResponse({ description: 'Paginated organizations' })
-  listOrganizations(
-    @Query()
-    query: PaginationQueryDto & {
-      status?: 'ACTIVE' | 'SUSPENDED';
-      search?: string;
-    },
-  ) {
+  listOrganizations(@Query() query: PlatformOrganizationQueryDto) {
     return this.platformService.listOrganizations(query);
   }
 
@@ -164,6 +156,23 @@ export class PlatformController {
     @CurrentUser() caller: AuthenticatedUser,
   ) {
     return this.platformService.removeManagedUser(
+      id,
+      caller.userId ?? null,
+    );
+  }
+
+  @Delete('managed-users/:id/permanent')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'PERMANENTLY delete any member row (never yourself, never the last owner)',
+  })
+  @ApiOkResponse({ description: 'Permanent deletion result' })
+  removeManagedUserPermanently(
+    @Param('id') id: string,
+    @CurrentUser() caller: AuthenticatedUser,
+  ) {
+    return this.platformService.removeManagedUserPermanently(
       id,
       caller.userId ?? null,
     );

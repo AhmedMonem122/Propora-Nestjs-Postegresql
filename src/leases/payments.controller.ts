@@ -15,12 +15,11 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { AuditEntity } from '../audit/audit.decorator.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
+import { PaymentQueryDto } from './dto/payment-query.dto.js';
 import { PaymentsService } from './payments.service.js';
 import { CreatePaymentDto, UpdatePaymentDto } from './dto/payment.dto.js';
 
@@ -34,24 +33,9 @@ export class PaymentsController {
   @Get('payments')
   @RequirePermissions('payment:read')
   @ApiOperation({ summary: 'List rent payments (filterable, overdue filter)' })
-  @ApiQuery({ name: 'leaseId', required: false })
-  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'PAID', 'OVERDUE', 'REFUNDED'] })
-  @ApiQuery({ name: 'overdue', required: false })
-  @ApiQuery({ name: 'method', required: false })
   @ApiOkResponse({ description: 'Paginated payments' })
-  findAll(
-    @Query()
-    query: PaginationQueryDto & {
-      leaseId?: string;
-      status?: 'PENDING' | 'PAID' | 'OVERDUE' | 'REFUNDED';
-      method?: string;
-      overdue?: boolean | string;
-    },
-  ) {
-    return this.paymentsService.findAll({
-      ...query,
-      overdue: query.overdue === true || query.overdue === 'true',
-    });
+  findAll(@Query() query: PaymentQueryDto) {
+    return this.paymentsService.findAll(query);
   }
 
   @Post('leases/:leaseId/payments')

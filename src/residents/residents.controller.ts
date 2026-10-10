@@ -15,12 +15,11 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { AuditEntity } from '../audit/audit.decorator.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
+import { ResidentQueryDto } from './dto/resident-query.dto.js';
 import { ResidentsService } from './residents.service.js';
 import { CreateResidentDto, UpdateResidentDto } from './dto/resident.dto.js';
 
@@ -34,11 +33,8 @@ export class ResidentsController {
 
   @Get()
   @ApiOperation({ summary: 'List residents (paginated, searchable)' })
-  @ApiQuery({ name: 'search', required: false })
   @ApiOkResponse({ description: 'Paginated residents' })
-  findAll(
-    @Query() query: PaginationQueryDto & { search?: string },
-  ) {
+  findAll(@Query() query: ResidentQueryDto) {
     return this.residentsService.findAll(query);
   }
 

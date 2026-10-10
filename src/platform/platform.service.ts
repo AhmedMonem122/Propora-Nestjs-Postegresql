@@ -19,6 +19,7 @@ import {
   paginated,
 } from '../common/utils/pagination.util.js';
 import { EventBus } from '../common/events/event-bus.js';
+import { AuditService } from '../audit/audit.service.js';
 import { toUserResponse } from '../common/dto/user-response.dto.js';
 import {
   CreatePlatformUserDto,
@@ -42,6 +43,7 @@ export class PlatformService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventBus,
+    private readonly audit: AuditService,
   ) {}
 
   async listOrganizations(query: PlatformOrganizationQuery) {
@@ -402,6 +404,81 @@ export class PlatformService {
     ]);
 
     return { id, status: 'INACTIVE' as UserStatus };
+  }
+
+  /**
+   * PERMANENT admin delete: removes the row and everything owned by it.
+   * Guardrails: never yourself, never the last organization owner.
+   * Organization data (documents, leases, payments) stays — only the
+   * authorship links (uploadedBy, assignee) are detached first.
+   */
+  async removeManagedUserPermanently(
+    id: string,
+    callerUserId: string | null,
+  ) {
+    if (callerUserId && callerUserId === id) {
+      throw new ForbiddenException('You cannot delete your own account here');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { userRoles: { select: { roleId: true } } },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.organizationId) {
+      const ownerRoleIds = (
+        await this.prisma.role.findMany({
+          where: {
+            organizationId: user.organizationId,
+            name: 'ORGANIZATION_OWNER',
+          },
+          select: { id: true },
+        })
+      ).map((role) => role.id);
+
+      const isOwner = user.userRoles.some((userRole) =>
+        ownerRoleIds.includes(userRole.roleId),
+      );
+      if (isOwner && ownerRoleIds.length > 0) {
+        const otherOwners = await this.prisma.userRole.count({
+          where: { roleId: { in: ownerRoleIds }, userId: { not: id } },
+        });
+        if (otherOwners === 0) {
+          throw new ConflictException(
+            'Cannot permanently delete the last owner of an organization — assign another owner first',
+          );
+        }
+      }
+    }
+
+    const organizationId = user.organizationId;
+    await this.prisma.$transaction([
+      this.prisma.document.updateMany({
+        where: { uploadedById: id },
+        data: { uploadedById: null },
+      }),
+      this.prisma.maintenanceRequest.updateMany({
+        where: { assignedToId: id },
+        data: { assignedToId: null },
+      }),
+      // Cascades: roles, refresh + reset tokens, notifications.
+      // SetNull: resident profile, linked platform user.
+      this.prisma.user.delete({ where: { id } }),
+    ]);
+
+    if (organizationId) {
+      await this.audit.log({
+        organizationId,
+        action: 'platform.userDeleted',
+        entityType: 'user',
+        entityId: id,
+      });
+    }
+
+    return { id, deleted: true, permanent: true };
   }
 
   private async defaultPlatformAdminId(): Promise<string> {

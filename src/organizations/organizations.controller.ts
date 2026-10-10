@@ -9,13 +9,11 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { AuditEntity } from '../audit/audit.decorator.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
-import { UserStatus } from '@prisma/client';
+import { UserQueryDto } from '../users/dto/user-query.dto.js';
 import { OrganizationsService } from './organizations.service.js';
 import { UpdateOrganizationDto } from './dto/update-organization.dto.js';
 import { UpdateOrganizationSettingsDto } from './dto/update-organization-settings.dto.js';
@@ -61,16 +59,7 @@ export class OrganizationsController {
   @Get('me/members')
   @RequirePermissions('user:read')
   @ApiOperation({ summary: 'List organization members' })
-  @ApiQuery({ name: 'search', required: false })
-  @ApiQuery({ name: 'status', required: false })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  listMembers(
-    @Query() query: PaginationQueryDto & {
-      search?: string;
-      status?: UserStatus;
-    },
-  ) {
+  listMembers(@Query() query: UserQueryDto) {
     return this.organizationsService.listMembers(query);
   }
 }

@@ -15,14 +15,13 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { AuditEntity } from '../audit/audit.decorator.js';
 import type { AuthenticatedUser } from '../common/types/authenticated-user.interface.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
+import { UserQueryDto } from './dto/user-query.dto.js';
 import { UserResponseDto } from '../common/dto/user-response.dto.js';
 import { UsersService } from './users.service.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
@@ -39,8 +38,6 @@ export class UsersController {
 
   @Get()
   @ApiOperation({ summary: 'List organization members' })
-  @ApiQuery({ name: 'search', required: false })
-  @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'] })
   @ApiOkResponse({
     schema: {
       type: 'object',
@@ -50,12 +47,7 @@ export class UsersController {
       },
     },
   })
-  findAll(
-    @Query() query: PaginationQueryDto & {
-      search?: string;
-      status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
-    },
-  ) {
+  findAll(@Query() query: UserQueryDto) {
     return this.usersService.findAll(query);
   }
 

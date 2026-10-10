@@ -15,7 +15,6 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
@@ -42,8 +41,6 @@ export class UnitsController {
   @Get('properties/:propertyId/units')
   @RequirePermissions('unit:read')
   @ApiOperation({ summary: 'List all units of a property' })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
   @ApiOkResponse({ description: 'Paginated units' })
   findAllByProperty(
     @Param('propertyId') propertyId: string,

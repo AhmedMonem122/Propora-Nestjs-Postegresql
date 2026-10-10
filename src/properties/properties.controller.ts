@@ -15,12 +15,11 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { AuditEntity } from '../audit/audit.decorator.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
+import { PropertyQueryDto } from './dto/property-query.dto.js';
 import { PropertiesService } from './properties.service.js';
 import {
   CreatePropertyDto,
@@ -37,20 +36,8 @@ export class PropertiesController {
 
   @Get()
   @ApiOperation({ summary: 'List properties (paginated, filterable)' })
-  @ApiQuery({ name: 'type', required: false, enum: ['RESIDENTIAL', 'COMMERCIAL', 'MIXED_USE', 'INDUSTRIAL', 'LAND'] })
-  @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'INACTIVE'] })
-  @ApiQuery({ name: 'search', required: false })
-  @ApiQuery({ name: 'city', required: false })
   @ApiOkResponse({ description: 'Paginated properties' })
-  findAll(
-    @Query()
-    query: PaginationQueryDto & {
-      type?: 'RESIDENTIAL' | 'COMMERCIAL' | 'MIXED_USE' | 'INDUSTRIAL' | 'LAND';
-      status?: 'ACTIVE' | 'INACTIVE';
-      search?: string;
-      city?: string;
-    },
-  ) {
+  findAll(@Query() query: PropertyQueryDto) {
     return this.propertiesService.findAll(query);
   }
 

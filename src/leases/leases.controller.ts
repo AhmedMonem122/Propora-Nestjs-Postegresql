@@ -15,12 +15,11 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { AuditEntity } from '../audit/audit.decorator.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
+import { LeaseQueryDto } from './dto/lease-query.dto.js';
 import { LeasesService } from './leases.service.js';
 import {
   CreateLeaseDto,
@@ -38,18 +37,8 @@ export class LeasesController {
 
   @Get()
   @ApiOperation({ summary: 'List leases (paginated, filterable)' })
-  @ApiQuery({ name: 'unitId', required: false })
-  @ApiQuery({ name: 'residentId', required: false })
-  @ApiQuery({ name: 'status', required: false, enum: ['UPCOMING', 'ACTIVE', 'ENDED', 'TERMINATED'] })
   @ApiOkResponse({ description: 'Paginated leases' })
-  findAll(
-    @Query()
-    query: PaginationQueryDto & {
-      unitId?: string;
-      residentId?: string;
-      status?: 'UPCOMING' | 'ACTIVE' | 'ENDED' | 'TERMINATED';
-    },
-  ) {
+  findAll(@Query() query: LeaseQueryDto) {
     return this.leasesService.findAll(query);
   }
 

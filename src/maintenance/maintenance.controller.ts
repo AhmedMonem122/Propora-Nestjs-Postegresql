@@ -15,12 +15,11 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { Audit, AuditEntity } from '../audit/audit.decorator.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
+import { MaintenanceQueryDto } from './dto/maintenance-query.dto.js';
 import { MaintenanceService } from './maintenance.service.js';
 import {
   AssignMaintenanceDto,
@@ -40,22 +39,8 @@ export class MaintenanceController {
 
   @Get('requests')
   @ApiOperation({ summary: 'List maintenance requests (filterable)' })
-  @ApiQuery({ name: 'status', required: false, enum: ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] })
-  @ApiQuery({ name: 'priority', required: false, enum: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] })
-  @ApiQuery({ name: 'unitId', required: false })
-  @ApiQuery({ name: 'assignedToId', required: false })
-  @ApiQuery({ name: 'search', required: false })
   @ApiOkResponse({ description: 'Paginated maintenance requests' })
-  findAll(
-    @Query()
-    query: PaginationQueryDto & {
-      status?: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
-      priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-      unitId?: string;
-      assignedToId?: string;
-      search?: string;
-    },
-  ) {
+  findAll(@Query() query: MaintenanceQueryDto) {
     return this.maintenanceService.findAll(query);
   }
 
