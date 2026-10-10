@@ -207,48 +207,55 @@ export class BillingService {
       throw new NotFoundException('Payment not found');
     }
 
-    const invoice = await this.invoices
-      .generateForPayment(payment.id)
-      .catch((error) => {
+    // The invoice number is deterministic, so every side effect below can
+    // run CONCURRENTLY instead of sequentially: on cold serverless starts
+    // the sequential version stacked PDF + storage + DB + mail latencies
+    // past client timeouts while the work still completed server-side.
+    const invoiceNo =
+      payment.invoiceNo ?? this.invoices.invoiceNumberFor(payment.id);
+    const recipientId =
+      payment.lease.resident.userId ??
+      (await this.ownerId(payment.organizationId));
+    const amount = Number(payment.amount.toString());
+
+    const [invoice] = await Promise.all([
+      this.invoices.generateForPayment(payment.id).catch((error) => {
         this.logger.error(
           `Invoice generation failed for ${payment.id}: ${(error as Error)?.message}`,
         );
         return null;
-      });
-
-    await this.notifications.createForUser({
-      // Resident portal accounts get it directly; otherwise org owners do.
-      userId:
-        payment.lease.resident.userId ??
-        (await this.ownerId(payment.organizationId)),
-      organizationId: payment.organizationId,
-      title: 'Payment received',
-      body: `${Number(payment.amount.toString()).toFixed(2)} ${payment.currency} received for ${payment.lease.unit.building.property.name} / ${payment.lease.unit.name}${invoice?.invoiceNo ? ` (${invoice.invoiceNo})` : ''}.`,
-      type: 'INFO',
-    });
-
-    await this.audit.log({
-      organizationId: payment.organizationId,
-      action: 'payment.paid',
-      entityType: 'payment',
-      entityId: payment.id,
-      metadata: {
-        amount: Number(payment.amount.toString()),
-        currency: payment.currency,
-        provider: payment.provider,
-        invoiceNo: invoice?.invoiceNo ?? payment.invoiceNo,
-      },
-    });
+      }),
+      this.notifications.createForUser({
+        // Resident portal accounts get it directly; otherwise org owners do.
+        userId: recipientId,
+        organizationId: payment.organizationId,
+        title: 'Payment received',
+        body: `${amount.toFixed(2)} ${payment.currency} received for ${payment.lease.unit.building.property.name} / ${payment.lease.unit.name} (${invoiceNo}).`,
+        type: 'INFO',
+      }),
+      this.audit.log({
+        organizationId: payment.organizationId,
+        action: 'payment.paid',
+        entityType: 'payment',
+        entityId: payment.id,
+        metadata: {
+          amount,
+          currency: payment.currency,
+          provider: payment.provider,
+          invoiceNo,
+        },
+      }),
+    ]);
 
     await this.events.emit('payment.paid', {
       organizationId: payment.organizationId,
       paymentId: payment.id,
       leaseId: payment.leaseId,
-      amount: Number(payment.amount.toString()),
+      amount,
       currency: payment.currency,
     });
 
-    return { ...payment, invoiceNo: invoice?.invoiceNo ?? payment.invoiceNo };
+    return { ...payment, invoiceNo: invoice?.invoiceNo ?? invoiceNo };
   }
 
   private async ownerId(organizationId: string): Promise<string> {
