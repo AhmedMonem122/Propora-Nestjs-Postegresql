@@ -20,28 +20,52 @@ export class SupabaseService {
     return this.configService.get<string>('SUPABASE_BUCKET', 'documents');
   }
 
-  async ensureBucket(): Promise<void> {
-    const client = this.getClient();
+  /**
+   * Best-effort bucket bootstrap. Returns true when the bucket is usable.
+   *
+   * Why not throw: with a restricted (anon) key, `listBuckets` is blinded
+   * by RLS and returns `[]` even when the bucket EXISTS in the dashboard —
+   * throwing here would block uploads that would otherwise succeed. So a
+   * failure only logs guidance and the upload itself produces the
+   * definitive error.
+   */
+  async ensureBucket(): Promise<boolean> {
+    let client: SupabaseClient;
+    try {
+      client = this.getClient();
+    } catch (error) {
+      this.logger.warn(
+        `Supabase bucket check skipped: ${(error as Error)?.message}`,
+      );
+      return false;
+    }
+
     const { data, error } = await client.storage.listBuckets();
 
     if (error) {
-      throw new BadRequestException(
-        `Supabase storage error: ${error.message}`,
-      );
+      this.logger.warn(`Supabase listBuckets failed: ${error.message}`);
+      return false;
     }
 
-    if (!data.some((bucket) => bucket.name === this.bucket)) {
-      const { error: createError } = await client.storage.createBucket(
-        this.bucket,
-        { public: true },
-      );
-
-      if (createError) {
-        throw new BadRequestException(
-          `Failed to create storage bucket: ${createError.message}`,
-        );
-      }
+    if (data.some((bucket) => bucket.name === this.bucket)) {
+      return true;
     }
+
+    const { error: createError } = await client.storage.createBucket(
+      this.bucket,
+      { public: true },
+    );
+
+    if (createError) {
+      this.logger.warn(
+        `Supabase bucket "${this.bucket}" is not reachable (${createError.message}). ` +
+          'It may already exist but be invisible to this key (RLS), or this key may lack permission to create it. ' +
+          'Set SUPABASE_SERVICE_KEY or create the bucket plus storage policies in the dashboard.',
+      );
+      return false;
+    }
+
+    return true;
   }
 
   async upload(
@@ -60,9 +84,7 @@ export class SupabaseService {
       });
 
     if (error) {
-      throw new BadRequestException(
-        `File upload to Supabase failed: ${error.message}`,
-      );
+      throw new BadRequestException(this.describeStorageError(error.message));
     }
 
     return this.publicUrl(path);
@@ -172,9 +194,33 @@ export class SupabaseService {
       if (serviceKey) {
         this.logger.log('Supabase storage uses the service key (RLS bypass)');
       }
-      this.client = createClient(url, key);
+      this.client = this.createRawClient(url, key);
     }
 
     return this.client;
+  }
+
+  /** Separated for tests (avoids real network clients). */
+  protected createRawClient(url: string, key: string): SupabaseClient {
+    return createClient(url, key);
+  }
+
+  private describeStorageError(message: string): string {
+    if (/row-level security|policy|permission|unauthorized|JWT/i.test(message)) {
+      return (
+        'Supabase rejected the storage operation (RLS/policy). ' +
+        'Fix with ONE of: (1) set SUPABASE_SERVICE_KEY (service_role, server-side only) and redeploy; ' +
+        `(2) in the Supabase dashboard create the "${this.bucket}" bucket plus storage policies allowing SELECT/INSERT/UPDATE/DELETE on it. ` +
+        `Provider detail: ${message}`
+      );
+    }
+    if (/bucket not found|bucket_not_found/i.test(message)) {
+      return (
+        `Storage bucket "${this.bucket}" does not exist. ` +
+        'Create it in the Supabase dashboard (Storage → New bucket) or set SUPABASE_SERVICE_KEY so the API can create it. ' +
+        `Provider detail: ${message}`
+      );
+    }
+    return `File upload to Supabase failed: ${message}`;
   }
 }
