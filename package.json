@@ -1,6 +1,7 @@
 {
   "name": "propora-api",
   "version": "0.1.0",
+  "packageManager": "npm@11.17.0",
   "description": "Propora API - Multi-tenant property management platform (NestJS + Prisma + PostgreSQL)",
   "author": "Ahmed Monem",
   "private": true,
