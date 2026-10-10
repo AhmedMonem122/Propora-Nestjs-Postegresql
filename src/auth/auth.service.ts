@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import bcryptjs from 'bcryptjs';
 import { PrismaService } from '../database/prisma.service.js';
 import { RbacService } from '../rbac/rbac.service.js';
@@ -21,6 +21,9 @@ import {
 } from './dto/change-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
+import { UpdateMeDto } from './dto/update-me.dto.js';
 
 interface IssuedTokens {
   accessToken: string;
@@ -58,6 +61,13 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto, ip?: string) {
+    // Public signup may only ever create an ORGANIZATION + its owner.
+    // Platform/super-admin accounts are seeded server-side, employees are
+    // invited by organization admins — roles are never self-selected.
+    if (this.configService.get('REGISTRATION_ENABLED', 'true') !== 'true') {
+      throw new ForbiddenException('Public registration is disabled');
+    }
+
     const email = dto.email.toLowerCase();
 
     const existingUser = await this.prisma.user.findUnique({
@@ -77,7 +87,11 @@ export class AuthService {
       (permission) => permission.name,
     );
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    // Organization provisioning writes roles × permissions in one unit.
+    // Against remote Postgres (Neon) this can exceed Prisma's 5s default
+    // interactive-transaction timeout, so it gets an explicit budget.
+    const result = await this.prisma.$transaction(
+      async (tx) => {
       const organization = await tx.organization.create({
         data: { name: dto.organizationName, slug },
       });
@@ -134,7 +148,9 @@ export class AuthService {
       });
 
       return { organization, user, roles };
-    });
+    },
+    { timeout: 30_000 },
+    );
 
     const tokens = await this.issueTokens(result.user);
     const userResponse = await this.buildUserResponse(result.user.id);
@@ -177,10 +193,23 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (user.status !== 'ACTIVE') {
+    if (user.status === 'SUSPENDED') {
       throw new ForbiddenException(
-        `Your account is ${user.status.toLowerCase()}. Contact your organization administrator.`,
+        'Your account is suspended. Contact the platform administrator.',
       );
+    }
+
+    // Self-deleted accounts (INACTIVE + deletedAt) come back to life on the
+    // next successful login. Admin-deactivated ones (deletedAt NULL) stay out.
+    let reactivated = false;
+    if (user.status !== 'ACTIVE') {
+      if (user.status === 'INACTIVE' && user.deletedAt) {
+        reactivated = true;
+      } else {
+        throw new ForbiddenException(
+          'Your account was deactivated by an administrator. Contact your organization administrator.',
+        );
+      }
     }
 
     if (user.organization && user.organization.status !== 'ACTIVE') {
@@ -191,7 +220,10 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: {
+        lastLoginAt: new Date(),
+        ...(reactivated ? { status: 'ACTIVE', deletedAt: null } : {}),
+      },
     });
 
     const tokens = await this.issueTokens(user);
@@ -201,7 +233,7 @@ export class AuthService {
       await this.audit.log({
         organizationId: user.organizationId,
         userId: user.id,
-        action: 'auth.login',
+        action: reactivated ? 'auth.reactivated' : 'auth.login',
         ipAddress: ip ?? null,
       });
     }
@@ -269,6 +301,200 @@ export class AuthService {
     const permissions = await this.rbacService.getUserPermissions(userId);
 
     return { ...userResponse, permissions };
+  }
+
+  async updateMe(userId: string, dto: UpdateMeDto, ip?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phone: dto.phone,
+      },
+      include: { userRoles: { include: { role: true } } },
+    });
+
+    if (user.organizationId) {
+      await this.audit.log({
+        organizationId: user.organizationId,
+        userId,
+        action: 'auth.profileUpdated',
+        ipAddress: ip ?? null,
+      });
+    }
+
+    return toUserResponse(updated);
+  }
+
+  /**
+   * Soft delete: the row stays (history, audit trail, FK integrity) but the
+   * account becomes INACTIVE with deletedAt set — which is exactly what lets
+   * the next login reactivate it, unlike admin deactivation.
+   */
+  async deleteMe(userId: string, ip?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          status: 'INACTIVE',
+          deletedAt: new Date(),
+          tokenVersion: { increment: 1 },
+        },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { userId },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    if (user.organizationId) {
+      await this.audit.log({
+        organizationId: user.organizationId,
+        userId,
+        action: 'auth.accountDeleted',
+        ipAddress: ip ?? null,
+      });
+    }
+  }
+
+  /**
+   * Starts an OTP password reset. ALWAYS succeeds silently — the response
+   * never reveals whether the email exists (anti-enumeration).
+   */
+  async requestPasswordReset(dto: ForgotPasswordDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email.toLowerCase() },
+    });
+
+    if (!user || user.status === 'SUSPENDED' || !user.organizationId) {
+      this.logger.warn(
+        'Password reset requested for unknown or ineligible account',
+      );
+      return;
+    }
+
+    // Single active code per user: invalidate previous unconsumed ones.
+    await this.prisma.passwordResetToken.deleteMany({
+      where: { userId: user.id, usedAt: null },
+    });
+
+    const otp = randomInt(100000, 1000000).toString();
+    const ttlMinutes = Number(
+      this.configService.get('PASSWORD_RESET_TTL_MINUTES', 10),
+    );
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(otp),
+        expiresAt: new Date(Date.now() + ttlMinutes * 60_000),
+      },
+    });
+
+    await this.events.emit('user.passwordResetRequested', {
+      email: user.email,
+      firstName: user.firstName,
+      otp,
+      ttlMinutes,
+    });
+  }
+
+  async resetPassword(dto: ResetPasswordDto, ip?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email.toLowerCase() },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid email or code');
+    }
+
+    const token = await this.prisma.passwordResetToken.findFirst({
+      where: {
+        userId: user.id,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const maxAttempts = Number(
+      this.configService.get('OTP_MAX_ATTEMPTS', 5),
+    );
+    if (!token || token.attempts >= maxAttempts) {
+      if (token) {
+        await this.prisma.passwordResetToken.delete({ where: { id: token.id } });
+      }
+      throw new UnauthorizedException('Invalid or expired code');
+    }
+
+    if (!otpMatches(dto.otp, token.tokenHash)) {
+      await this.prisma.passwordResetToken.update({
+        where: { id: token.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException('Invalid email or code');
+    }
+
+    const passwordHash = await bcryptjs.hash(dto.newPassword, this.saltRounds());
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          status: 'ACTIVE',
+          deletedAt: null,
+          tokenVersion: { increment: 1 },
+        },
+      }),
+      this.prisma.passwordResetToken.update({
+        where: { id: token.id },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.passwordResetToken.deleteMany({
+        where: { userId: user.id, usedAt: null },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { userId: user.id },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    // Proving email ownership logs them straight in.
+    const tokens = await this.issueTokens({ ...user, tokenVersion: user.tokenVersion + 1 });
+    const userResponse = await this.buildUserResponse(user.id);
+
+    if (user.organizationId) {
+      await this.audit.log({
+        organizationId: user.organizationId,
+        userId: user.id,
+        action: 'auth.passwordReset',
+        ipAddress: ip ?? null,
+      });
+    }
+
+    await this.events.emit('user.passwordChanged', {
+      organizationId: user.organizationId,
+      userId: user.id,
+      email: user.email,
+    });
+
+    return { tokens, user: userResponse };
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto, ip?: string) {
@@ -561,6 +787,18 @@ export class AuthService {
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+/** Constant-time OTP comparison over the stored SHA-256 hex digests. */
+function otpMatches(otp: string, tokenHash: string): boolean {
+  try {
+    return timingSafeEqual(
+      Buffer.from(hashToken(otp), 'hex'),
+      Buffer.from(tokenHash, 'hex'),
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Access (JWT) tokens have exactly two dots; opaque refresh tokens have none. */

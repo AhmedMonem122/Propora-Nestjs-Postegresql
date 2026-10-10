@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service.js';
 import { EventBus } from '../common/events/event-bus.js';
 import type {
@@ -22,11 +23,15 @@ export class MailListener implements OnModuleInit {
     private readonly events: EventBus,
     private readonly mail: MailService,
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
   ) {}
 
   onModuleInit() {
     this.events.on('user.registered', (payload) => this.sendWelcome(payload));
     this.events.on('user.invited', (payload) => this.sendInvite(payload));
+    this.events.on('user.passwordResetRequested', (payload) =>
+      this.sendOtp(payload),
+    );
     this.events.on('user.passwordChanged', (payload) =>
       this.mail.send({
         to: payload.email,
@@ -66,6 +71,35 @@ export class MailListener implements OnModuleInit {
         temporaryPassword: payload.temporaryPassword ?? null,
       },
     });
+  }
+
+  private async sendOtp(payload: {
+    email: string;
+    firstName: string;
+    otp: string;
+    ttlMinutes: number;
+  }) {
+    const result = await this.mail.send({
+      to: payload.email,
+      subject: 'Your Propora password reset code',
+      template: 'otp',
+      context: {
+        firstName: payload.firstName,
+        otp: payload.otp,
+        ttlMinutes: payload.ttlMinutes,
+      },
+    });
+
+    // Without a mail provider there is no other way to see the code in
+    // development — log it, but NEVER in production.
+    if (
+      result.skipped &&
+      this.config.get<string>('NODE_ENV', 'development') !== 'production'
+    ) {
+      this.logger.warn(
+        `[dev-only] password reset OTP for ${payload.email}: ${payload.otp}`,
+      );
+    }
   }
 
   private async sendAssignment(payload: MaintenanceAssignedEvent) {

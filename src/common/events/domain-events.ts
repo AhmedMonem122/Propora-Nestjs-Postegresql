@@ -36,12 +36,20 @@ export interface PasswordChangedEvent {
   email: string;
 }
 
+export interface PasswordResetRequestedEvent {
+  email: string;
+  firstName: string;
+  otp: string;
+  ttlMinutes: number;
+}
+
 export interface DomainEventMap {
   'payment.paid': PaymentPaidEvent;
   'maintenance.assigned': MaintenanceAssignedEvent;
   'user.registered': UserRegisteredEvent;
   'user.invited': UserInvitedEvent;
   'user.passwordChanged': PasswordChangedEvent;
+  'user.passwordResetRequested': PasswordResetRequestedEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;

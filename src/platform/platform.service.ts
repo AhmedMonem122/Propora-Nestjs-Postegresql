@@ -1,20 +1,34 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { OrganizationStatus, Prisma, SubscriptionStatus } from '@prisma/client';
+import {
+  OrganizationStatus,
+  Prisma,
+  SubscriptionStatus,
+  UserStatus,
+} from '@prisma/client';
+import bcryptjs from 'bcryptjs';
 import { PrismaService } from '../database/prisma.service.js';
 import {
   buildPaginationMeta,
   normalizePagination,
   paginated,
 } from '../common/utils/pagination.util.js';
+import { EventBus } from '../common/events/event-bus.js';
+import { toUserResponse } from '../common/dto/user-response.dto.js';
 import {
   CreatePlatformUserDto,
   UpdatePlatformUserDto,
 } from './dto/platform-user.dto.js';
+import {
+  AdminUserQueryDto,
+  CreateManagedUserDto,
+  UpdateManagedUserDto,
+} from './dto/platform-manage-user.dto.js';
 
 export interface PlatformOrganizationQuery {
   status?: OrganizationStatus;
@@ -25,7 +39,10 @@ export interface PlatformOrganizationQuery {
 
 @Injectable()
 export class PlatformService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventBus,
+  ) {}
 
   async listOrganizations(query: PlatformOrganizationQuery) {
     const { page, limit, skip, take } = normalizePagination(query);
@@ -227,6 +244,164 @@ export class PlatformService {
     // Managed organizations are detached (SetNull), never deleted.
     await this.prisma.platformUser.delete({ where: { id } });
     return { id, deleted: true };
+  }
+
+  // ------------------------------------------------------------------
+  // Cross-organization member management (the admin-dashboard user API).
+  // Organization owners keep managing their own members via /users — these
+  // routes let platform admins reach every account on the platform.
+  // ------------------------------------------------------------------
+
+  async listAllUsers(query: AdminUserQueryDto) {
+    const { page, limit, skip, take } = normalizePagination(query);
+
+    const where: Prisma.UserWhereInput = {
+      ...(query.organizationId ? { organizationId: query.organizationId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { firstName: { contains: query.search, mode: 'insensitive' } },
+              { lastName: { contains: query.search, mode: 'insensitive' } },
+              { email: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, users] = await this.prisma.$transaction([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        include: {
+          organization: { select: { id: true, name: true, slug: true } },
+          userRoles: { include: { role: { select: { id: true, name: true } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+    ]);
+
+    return paginated(users, buildPaginationMeta(total, page, limit));
+  }
+
+  async createManagedUser(dto: CreateManagedUserDto) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: dto.organizationId },
+    });
+    if (!organization) {
+      throw new BadRequestException('Organization not found');
+    }
+
+    const email = dto.email.toLowerCase();
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      throw new ConflictException('A user with this email already exists');
+    }
+
+    const roleIds = [...new Set(dto.roleIds ?? [])];
+    if (roleIds.length > 0) {
+      const roles = await this.prisma.role.findMany({
+        where: { id: { in: roleIds }, organizationId: dto.organizationId },
+      });
+      if (roles.length !== roleIds.length) {
+        throw new BadRequestException(
+          'One or more roles were not found in the organization',
+        );
+      }
+    }
+
+    const user = await this.prisma.user.create({
+      data: {
+        organizationId: dto.organizationId,
+        email,
+        passwordHash: await bcryptjs.hash(dto.password, 12),
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phone: dto.phone,
+        status: 'ACTIVE',
+        userRoles: { create: roleIds.map((roleId) => ({ roleId })) },
+      },
+      include: { userRoles: { include: { role: true } } },
+    });
+
+    await this.events.emit('user.invited', {
+      organizationId: dto.organizationId,
+      organizationName: organization.name,
+      email,
+      firstName: dto.firstName,
+      temporaryPassword: dto.password,
+    });
+
+    return toUserResponse(user);
+  }
+
+  async getManagedUser(id: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id },
+      include: {
+        organization: { select: { id: true, name: true, slug: true } },
+        userRoles: { include: { role: true } },
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return { ...toUserResponse(user), organization: user.organization };
+  }
+
+  async updateManagedUser(id: string, dto: UpdateManagedUserDto) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: {
+        ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+        ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
+        ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+        ...(dto.status
+          ? {
+              status: dto.status,
+              // Admin reactivation is a fresh start.
+              ...(dto.status === 'ACTIVE' ? { deletedAt: null } : {}),
+            }
+          : {}),
+      },
+      include: { userRoles: { include: { role: true } } },
+    });
+
+    return toUserResponse(updated);
+  }
+
+  async removeManagedUser(id: string, callerUserId: string | null) {
+    if (callerUserId && callerUserId === id) {
+      throw new ForbiddenException('You cannot delete your own account here');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Admin-side delete is a hard block, never a row delete: history, audit
+    // trail and foreign keys stay intact. Self-service deleteMe() is the only
+    // path that allows later reactivation.
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id },
+        data: { status: 'INACTIVE', tokenVersion: { increment: 1 } },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { userId: id },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    return { id, status: 'INACTIVE' as UserStatus };
   }
 
   private async defaultPlatformAdminId(): Promise<string> {

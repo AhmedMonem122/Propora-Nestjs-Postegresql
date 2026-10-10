@@ -73,8 +73,16 @@ function createMocks(overrides: Record<string, unknown> = {}) {
     refreshToken: {
       create: vi.fn().mockResolvedValue({ id: 'rt-1' }),
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       update: vi.fn().mockResolvedValue({ id: 'rt-1' }),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    passwordResetToken: {
+      create: vi.fn().mockResolvedValue({ id: 'prt-1' }),
+      findFirst: vi.fn(),
+      update: vi.fn().mockResolvedValue({ id: 'prt-1' }),
+      delete: vi.fn().mockResolvedValue({ id: 'prt-1' }),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     $transaction: vi.fn((arg: unknown) =>
       typeof arg === 'function'
@@ -318,6 +326,212 @@ describe('AuthService', () => {
         data: { tokenVersion: { increment: 1 } },
       });
       expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('password recovery', () => {
+    it('stays silent for unknown emails (no enumeration)', async () => {
+      const { service, prisma, events } = createService();
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.requestPasswordReset({ email: 'nobody@example.com' } as never),
+      ).resolves.toBeUndefined();
+      expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
+      expect(events.emit).not.toHaveBeenCalled();
+    });
+
+    it('creates a hashed single-use code and emits the email event', async () => {
+      const { service, prisma, events } = createService();
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        firstName: 'Test',
+        status: 'ACTIVE',
+        organizationId: 'org-1',
+      });
+
+      await service.requestPasswordReset({
+        email: 'test@example.com',
+      } as never);
+
+      expect(prisma.passwordResetToken.deleteMany).toHaveBeenCalled();
+      expect(prisma.passwordResetToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user-1',
+          expiresAt: expect.any(Date),
+        }),
+      });
+      const created =
+        prisma.passwordResetToken.create.mock.calls[0][0].data;
+      expect(created.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(events.emit).toHaveBeenCalledWith(
+        'user.passwordResetRequested',
+        expect.objectContaining({ email: 'test@example.com' }),
+      );
+    });
+
+    it('rejects a wrong code and counts the attempt', async () => {
+      const { service, prisma } = createService();
+      const { createHash } = await import('node:crypto');
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+      });
+      prisma.passwordResetToken.findFirst.mockResolvedValue({
+        id: 'prt-1',
+        tokenHash: createHash('sha256').update('482916').digest('hex'),
+        attempts: 0,
+      });
+
+      await expect(
+        service.resetPassword({
+          email: 'test@example.com',
+          otp: '000000',
+          newPassword: 'NewStr0ng!Pass',
+        } as never),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(prisma.passwordResetToken.update).toHaveBeenCalledWith({
+        where: { id: 'prt-1' },
+        data: { attempts: { increment: 1 } },
+      });
+    });
+
+    it('resets the password with the right code and logs the user in', async () => {
+      const { service, prisma, events } = createService();
+      const { createHash } = await import('node:crypto');
+      prisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          email: 'test@example.com',
+          organizationId: 'org-1',
+          tokenVersion: 0,
+        })
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          email: 'test@example.com',
+          firstName: 'Test',
+          lastName: 'User',
+          phone: null,
+          organizationId: 'org-1',
+          status: 'ACTIVE',
+          userRoles: [],
+        });
+      prisma.passwordResetToken.findFirst.mockResolvedValue({
+        id: 'prt-1',
+        tokenHash: createHash('sha256').update('482916').digest('hex'),
+        attempts: 0,
+      });
+
+      const result = await service.resetPassword({
+        email: 'test@example.com',
+        otp: '482916',
+        newPassword: 'NewStr0ng!Pass',
+      } as never);
+
+      expect(result.tokens.accessToken).toBe('jwt-access-token');
+      expect(result.tokens.refreshToken).toBeDefined();
+      expect(events.emit).toHaveBeenCalledWith(
+        'user.passwordChanged',
+        expect.objectContaining({ userId: 'user-1' }),
+      );
+    });
+  });
+
+  describe('self-service account lifecycle', () => {
+    it('soft-deletes the account and reactivates it on next login', async () => {
+      const { service, prisma } = createService();
+      prisma.user.findUnique
+        .mockResolvedValueOnce({ id: 'user-1', organizationId: 'org-1' })
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          organizationId: 'org-1',
+          email: 'test@example.com',
+          passwordHash: 'hashed-password',
+          status: 'INACTIVE',
+          deletedAt: new Date(),
+          tokenVersion: 1,
+          organization: { id: 'org-1', status: 'ACTIVE' },
+          userRoles: [],
+        })
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          email: 'test@example.com',
+          firstName: 'Test',
+          lastName: 'User',
+          phone: null,
+          organizationId: 'org-1',
+          status: 'ACTIVE',
+          userRoles: [],
+        });
+
+      await service.deleteMe('user-1');
+      expect(prisma.user.update).toHaveBeenNthCalledWith(1, {
+        where: { id: 'user-1' },
+        data: {
+          status: 'INACTIVE',
+          deletedAt: expect.any(Date),
+          tokenVersion: { increment: 1 },
+        },
+      });
+
+      const result = await service.login({
+        email: 'test@example.com',
+        password: 'Password123!',
+      } as never);
+
+      expect(result.tokens.accessToken).toBe('jwt-access-token');
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+          deletedAt: null,
+        }),
+      });
+    });
+
+    it('keeps admin-deactivated accounts blocked', async () => {
+      const { service, prisma } = createService();
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        passwordHash: 'hashed-password',
+        status: 'INACTIVE',
+        deletedAt: null,
+        organization: { id: 'org-1', status: 'ACTIVE' },
+      });
+
+      await expect(
+        service.login({
+          email: 'test@example.com',
+          password: 'Password123!',
+        } as never),
+      ).rejects.toThrow(/deactivated by an administrator/i);
+    });
+
+    it('updates the own profile', async () => {
+      const { service, prisma } = createService();
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        organizationId: 'org-1',
+      });
+      prisma.user.update.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        firstName: 'New',
+        lastName: 'Name',
+        phone: null,
+        organizationId: 'org-1',
+        status: 'ACTIVE',
+        userRoles: [],
+      });
+
+      const result = await service.updateMe('user-1', {
+        firstName: 'New',
+        lastName: 'Name',
+      } as never);
+
+      expect(result.firstName).toBe('New');
     });
   });
 

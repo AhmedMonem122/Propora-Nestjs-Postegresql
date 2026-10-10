@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Req,
   Res,
@@ -26,11 +28,24 @@ import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RefreshTokenDto } from './dto/refresh.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
+import { UpdateMeDto } from './dto/update-me.dto.js';
 import { AuthResponseDto } from './dto/auth-response.dto.js';
 
 const REFRESH_COOKIE = 'propora_refresh_token';
 const COOKIE_PATH = '/api/v1/auth';
 
+/**
+ * Account model (deliberately simple — the secure default for B2B SaaS):
+ * - POST /register is PUBLIC but can only create an ORGANIZATION + its owner.
+ *   There is no role picker: employees are invited by admins (POST /users),
+ *   platform admins are seeded server-side. Self-registering as an admin is
+ *   impossible by design.
+ * - POST /login takes email + password only (no role dropdown — the server
+ *   already knows your roles; GET /me returns them for client-side routing).
+ * - Platform admins sign in separately at POST /platform/auth/login.
+ */
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -41,7 +56,9 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  @ApiOperation({ summary: 'Register a new organization and its owner' })
+  @ApiOperation({
+    summary: 'Register a new organization and its owner (public signup)',
+  })
   @ApiCreatedResponse({ type: AuthResponseDto })
   async register(
     @Body() dto: RegisterDto,
@@ -55,7 +72,9 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  @ApiOperation({ summary: 'Authenticate with email and password' })
+  @ApiOperation({
+    summary: 'Authenticate with email and password (roles come from GET /me)',
+  })
   @ApiOkResponse({ type: AuthResponseDto })
   async login(
     @Body() dto: LoginDto,
@@ -69,7 +88,10 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
-  @ApiOperation({ summary: 'Rotate the refresh token and get a new access token' })
+  @ApiOperation({
+    summary:
+      'Rotate the refresh token. Cookie is primary; body fallback for mobile (both must agree if sent). Returns a NEW access + refresh pair.',
+  })
   @ApiOkResponse({ type: AuthResponseDto })
   async refresh(
     @Req() req: Request,
@@ -99,6 +121,39 @@ export class AuthController {
     res.clearCookie(REFRESH_COOKIE, { path: COOKIE_PATH });
   }
 
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Post('forgot-password')
+  @ApiOperation({
+    summary: 'Email a 6-digit reset code (always 200, never reveals emails)',
+  })
+  @ApiOkResponse({ description: 'Acknowledgement' })
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService
+      .requestPasswordReset(dto)
+      .then(() => ({
+        message:
+          'If an account exists for this email, a reset code was sent.',
+      }));
+  }
+
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Post('reset-password')
+  @ApiOperation({
+    summary: 'Reset the password with the emailed code (logs you in)',
+  })
+  @ApiOkResponse({ type: AuthResponseDto })
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { tokens, user } = await this.authService.resetPassword(dto, req.ip);
+    this.setRefreshCookie(res, tokens.refreshToken, tokens.expiresAt);
+    return this.toResponse(tokens, user);
+  }
+
   @ApiBearerAuth()
   @Get('me')
   @ApiOperation({ summary: 'Get the current authenticated user with roles and permissions' })
@@ -108,6 +163,39 @@ export class AuthController {
       throw new UnauthorizedException('Organization account required');
     }
     return this.authService.me(user.userId);
+  }
+
+  @ApiBearerAuth()
+  @Patch('me')
+  @ApiOperation({ summary: 'Update your own profile (name, phone)' })
+  @ApiOkResponse({ description: 'Updated profile' })
+  updateMe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateMeDto,
+    @Req() req: Request,
+  ) {
+    if (!user.userId) {
+      throw new UnauthorizedException('Organization account required');
+    }
+    return this.authService.updateMe(user.userId, dto, req.ip);
+  }
+
+  @ApiBearerAuth()
+  @Delete('me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Soft-delete your account (deactivates; login reactivates)',
+  })
+  async deleteMe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (!user.userId) {
+      throw new UnauthorizedException('Organization account required');
+    }
+    await this.authService.deleteMe(user.userId, req.ip);
+    res.clearCookie(REFRESH_COOKIE, { path: COOKIE_PATH });
   }
 
   @ApiBearerAuth()
@@ -152,9 +240,15 @@ export class AuthController {
     return token;
   }
 
-  private toResponse(tokens: { accessToken: string; expiresIn: number }, user: unknown) {
+  private toResponse(
+    tokens: { accessToken: string; refreshToken: string; expiresIn: number },
+    user: unknown,
+  ) {
     return {
       accessToken: tokens.accessToken,
+      // Browser clients use the httpOnly cookie; mobile/CLI clients store
+      // this value and send it back in the body of POST /auth/refresh.
+      refreshToken: tokens.refreshToken,
       expiresIn: tokens.expiresIn,
       tokenType: 'Bearer',
       user,

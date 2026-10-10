@@ -10,7 +10,8 @@ export type MailTemplate =
   | 'invite'
   | 'receipt'
   | 'maintenance-assigned'
-  | 'password-changed';
+  | 'password-changed'
+  | 'otp';
 
 export interface SendMailInput {
   to: string;

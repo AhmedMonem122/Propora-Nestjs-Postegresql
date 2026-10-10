@@ -28,6 +28,11 @@ import {
   CreatePlatformUserDto,
   UpdatePlatformUserDto,
 } from './dto/platform-user.dto.js';
+import {
+  AdminUserQueryDto,
+  CreateManagedUserDto,
+  UpdateManagedUserDto,
+} from './dto/platform-manage-user.dto.js';
 
 @ApiBearerAuth()
 @ApiTags('platform')
@@ -113,5 +118,54 @@ export class PlatformController {
   @ApiOkResponse({ description: 'Deletion result' })
   removePlatformUser(@Param('id') id: string) {
     return this.platformService.removePlatformUser(id);
+  }
+
+  @Get('managed-users')
+  @ApiOperation({
+    summary: 'List every member account on the platform (admin dashboard)',
+  })
+  @ApiOkResponse({ description: 'Paginated users with organization and roles' })
+  listAllUsers(@Query() query: AdminUserQueryDto) {
+    return this.platformService.listAllUsers(query);
+  }
+
+  @Post('managed-users')
+  @ApiOperation({ summary: 'Create a member inside any organization' })
+  @ApiCreatedResponse({ description: 'Created member' })
+  createManagedUser(@Body() dto: CreateManagedUserDto) {
+    return this.platformService.createManagedUser(dto);
+  }
+
+  @Get('managed-users/:id')
+  @ApiOperation({ summary: 'Get any member account by id' })
+  @ApiOkResponse({ description: 'Member with organization and roles' })
+  getManagedUser(@Param('id') id: string) {
+    return this.platformService.getManagedUser(id);
+  }
+
+  @Patch('managed-users/:id')
+  @ApiOperation({ summary: 'Update any member (profile, status)' })
+  @ApiOkResponse({ description: 'Updated member' })
+  updateManagedUser(
+    @Param('id') id: string,
+    @Body() dto: UpdateManagedUserDto,
+  ) {
+    return this.platformService.updateManagedUser(id, dto);
+  }
+
+  @Delete('managed-users/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Block any member (hard block, history preserved)',
+  })
+  @ApiOkResponse({ description: 'Blocked member' })
+  removeManagedUser(
+    @Param('id') id: string,
+    @CurrentUser() caller: AuthenticatedUser,
+  ) {
+    return this.platformService.removeManagedUser(
+      id,
+      caller.userId ?? null,
+    );
   }
 }
