@@ -24,6 +24,7 @@ export interface SendMailInput {
 }
 
 const SEND_TIMEOUT_MS = 8000;
+const SEND_OVERALL_TIMEOUT_MS = 12000;
 
 /**
  * Transactional email with Pug templates and two transports:
@@ -98,10 +99,16 @@ export class MailService {
     }
 
     try {
-      const messageId =
+      // Overall deadline on top of the per-stage timeouts: no matter which
+      // stage stalls (DNS, TLS, greeting, data), the triggering request is
+      // never held longer than this.
+      const messageId = await this.withTimeout(
         transport === 'smtp'
-          ? await this.sendViaSmtp(input, html)
-          : await this.sendViaBrevo(input, html);
+          ? this.sendViaSmtp(input, html)
+          : this.sendViaBrevo(input, html),
+        SEND_OVERALL_TIMEOUT_MS,
+        `mail to ${input.to}`,
+      );
       this.logger.log(
         `Mail sent to ${input.to} via ${transport} ("${input.subject}")`,
       );
@@ -112,6 +119,30 @@ export class MailService {
       );
       throw error;
     }
+  }
+
+  private withTimeout<T>(
+    promise: Promise<T>,
+    ms: number,
+    label: string,
+  ): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${label} timed out after ${ms}ms`)),
+        ms,
+      );
+    });
+    return Promise.race([promise, deadline]).then(
+      (value) => {
+        clearTimeout(timer);
+        return value;
+      },
+      (error) => {
+        clearTimeout(timer);
+        throw error;
+      },
+    );
   }
 
   private async sendViaSmtp(
