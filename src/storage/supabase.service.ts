@@ -9,6 +9,13 @@ export class SupabaseService {
 
   constructor(private readonly configService: ConfigService) {}
 
+  /**
+   * Server-side storage (bucket admin, uploads, deletes) prefers
+   * SUPABASE_SERVICE_KEY, which bypasses storage RLS policies. The anon
+   * key only works when the dashboard has matching storage policies, so a
+   * missing service key degrades to anon with the same API.
+   */
+
   get bucket(): string {
     return this.configService.get<string>('SUPABASE_BUCKET', 'documents');
   }
@@ -139,14 +146,22 @@ export class SupabaseService {
   isConfigured(): boolean {
     return Boolean(
       this.configService.get<string>('SUPABASE_URL') &&
-        this.configService.get<string>('SUPABASE_ANON_KEY'),
+        (this.configService.get<string>('SUPABASE_SERVICE_KEY') ||
+          this.configService.get<string>('SUPABASE_ANON_KEY')),
     );
+  }
+
+  usesServiceKey(): boolean {
+    return Boolean(this.configService.get<string>('SUPABASE_SERVICE_KEY'));
   }
 
   private getClient(): SupabaseClient {
     if (!this.client) {
       const url = this.configService.get<string>('SUPABASE_URL');
-      const key = this.configService.get<string>('SUPABASE_ANON_KEY');
+      const serviceKey =
+        this.configService.get<string>('SUPABASE_SERVICE_KEY');
+      const anonKey = this.configService.get<string>('SUPABASE_ANON_KEY');
+      const key = serviceKey ?? anonKey;
 
       if (!url || !key) {
         throw new BadRequestException(
@@ -154,6 +169,9 @@ export class SupabaseService {
         );
       }
 
+      if (serviceKey) {
+        this.logger.log('Supabase storage uses the service key (RLS bypass)');
+      }
       this.client = createClient(url, key);
     }
 
