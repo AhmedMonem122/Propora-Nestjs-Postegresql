@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -32,6 +33,7 @@ import {
   CreateManagedUserDto,
   UpdateManagedUserDto,
 } from './dto/platform-manage-user.dto.js';
+import { DeleteOrganizationDto } from './dto/delete-organization.dto.js';
 import { PlatformOrganizationQueryDto } from './dto/platform-organization-query.dto.js';
 
 @ApiBearerAuth()
@@ -53,6 +55,34 @@ export class PlatformController {
   @ApiOkResponse({ description: 'Organization details' })
   getOrganization(@Param('id') id: string) {
     return this.platformService.getOrganization(id);
+  }
+
+  @Delete('organizations/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'DANGER ZONE: permanently delete an organization with everything in it (slug confirmation required)',
+  })
+  @ApiOkResponse({ description: 'Deletion receipt with removed counts' })
+  removeOrganization(
+    @Param('id') id: string,
+    @Body() dto: DeleteOrganizationDto,
+  ) {
+    return this.platformService.removeOrganization(id, dto.confirm);
+  }
+
+  @Get('roles')
+  @ApiOperation({
+    summary: 'List roles of one organization (dashboard pickers)',
+  })
+  @ApiOkResponse({ description: 'Roles with permission names' })
+  listOrgRoles(@Query('organizationId') organizationId: string) {
+    if (!organizationId) {
+      throw new BadRequestException(
+        'Query parameter organizationId is required',
+      );
+    }
+    return this.platformService.listOrgRoles(organizationId);
   }
 
   @Patch('organizations/:id')

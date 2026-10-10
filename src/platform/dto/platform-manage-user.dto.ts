@@ -96,4 +96,13 @@ export class UpdateManagedUserDto {
   @IsEnum(UserStatus)
   @IsOptional()
   status?: UserStatus;
+
+  @ApiPropertyOptional({
+    description: 'Replace all roles (must belong to the user organization)',
+    example: ['role-id-1'],
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  roleIds?: string[];
 }

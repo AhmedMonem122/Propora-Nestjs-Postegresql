@@ -20,6 +20,7 @@ import {
 } from '../common/utils/pagination.util.js';
 import { EventBus } from '../common/events/event-bus.js';
 import { AuditService } from '../audit/audit.service.js';
+import { RbacService } from '../rbac/rbac.service.js';
 import { toUserResponse } from '../common/dto/user-response.dto.js';
 import {
   CreatePlatformUserDto,
@@ -44,6 +45,7 @@ export class PlatformService {
     private readonly prisma: PrismaService,
     private readonly events: EventBus,
     private readonly audit: AuditService,
+    private readonly rbac: RbacService,
   ) {}
 
   async listOrganizations(query: PlatformOrganizationQuery) {
@@ -147,6 +149,40 @@ export class PlatformService {
           : {}),
       },
     });
+  }
+
+  /**
+   * Roles of one organization with flat permission names — feeds dashboard
+   * pickers (e.g. choosing the ORGANIZATION_OWNER id for assignment).
+   */
+  async listOrgRoles(organizationId: string) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { id: true },
+    });
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    const roles = await this.prisma.role.findMany({
+      where: { organizationId },
+      include: {
+        rolePermissions: { include: { permission: true } },
+        _count: { select: { userRoles: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return roles.map((role) => ({
+      id: role.id,
+      name: role.name,
+      description: role.description,
+      isSystem: role.isSystem,
+      members: role._count.userRoles,
+      permissions: role.rolePermissions.map(
+        (rolePermission) => rolePermission.permission.name,
+      ),
+    }));
   }
 
   async listPlatformUsers(query: { page?: number; limit?: number }) {
@@ -359,22 +395,55 @@ export class PlatformService {
       throw new NotFoundException('User not found');
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data: {
-        ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
-        ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
-        ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
-        ...(dto.status
-          ? {
-              status: dto.status,
-              // Admin reactivation is a fresh start.
-              ...(dto.status === 'ACTIVE' ? { deletedAt: null } : {}),
-            }
-          : {}),
-      },
-      include: { userRoles: { include: { role: true } } },
+    const roleIds =
+      dto.roleIds !== undefined ? [...new Set(dto.roleIds)] : undefined;
+    if (roleIds !== undefined) {
+      if (!user.organizationId) {
+        throw new BadRequestException(
+          'Role assignment requires the user to belong to an organization',
+        );
+      }
+      const roles = await this.prisma.role.findMany({
+        where: { id: { in: roleIds }, organizationId: user.organizationId },
+      });
+      if (roles.length !== roleIds.length) {
+        throw new BadRequestException(
+          'One or more roles were not found in the user organization',
+        );
+      }
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (roleIds !== undefined) {
+        await tx.userRole.deleteMany({ where: { userId: id } });
+        if (roleIds.length > 0) {
+          await tx.userRole.createMany({
+            data: roleIds.map((roleId) => ({ userId: id, roleId })),
+            skipDuplicates: true,
+          });
+        }
+      }
+      return tx.user.update({
+        where: { id },
+        data: {
+          ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+          ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
+          ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+          ...(dto.status
+            ? {
+                status: dto.status,
+                // Admin reactivation is a fresh start.
+                ...(dto.status === 'ACTIVE' ? { deletedAt: null } : {}),
+              }
+            : {}),
+        },
+        include: { userRoles: { include: { role: true } } },
+      });
     });
+
+    if (roleIds !== undefined) {
+      this.rbac.invalidateUserCache(id);
+    }
 
     return toUserResponse(updated);
   }
@@ -525,6 +594,50 @@ export class PlatformService {
         'This user account is already linked to another platform user',
       );
     }
+  }
+
+  /**
+   * DANGER ZONE — explicit organization wipe. Unlike user deletion (which
+   * must never destroy company data), this is the one deliberate path that
+   * removes a tenant with everything in it. Guarded by slug confirmation
+   * (GitHub-style) and restricted to platform admins by the route guard.
+   * Everything cascades from the schema relations; the returned counts are
+   * the receipt (the org's own audit rows vanish with it — export first if
+   * the trail matters for compliance).
+   */
+  async removeOrganization(id: string, confirmation: string) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            users: true,
+            properties: true,
+            leases: true,
+            payments: true,
+            documents: true,
+          },
+        },
+      },
+    });
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+    if (confirmation !== organization.slug) {
+      throw new BadRequestException(
+        'Confirmation does not match: send { "confirm": "<org-slug>" } to permanently delete the organization',
+      );
+    }
+
+    await this.prisma.organization.delete({ where: { id } });
+
+    return {
+      id,
+      slug: organization.slug,
+      deleted: true,
+      permanent: true,
+      removed: organization._count,
+    };
   }
 
   async getStats() {
