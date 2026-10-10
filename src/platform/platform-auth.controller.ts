@@ -37,6 +37,7 @@ export class PlatformAuthController {
 
   @Public()
   @Post('login')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Platform admin sign in (system level, no organization)' })
   @ApiOkResponse({ description: 'Platform session tokens' })
   async login(

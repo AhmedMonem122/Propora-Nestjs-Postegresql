@@ -9,10 +9,12 @@ describe('toBoolean', () => {
     ['false', false],
     ['1', false],
     ['', false],
-    [undefined, false],
-    [null, false],
     [0, false],
   ])('coerces %j to %j', (value, expected) => {
     expect(toBoolean({ value })).toBe(expected);
+  });
+
+  it.each([undefined, null])('leaves %j absent', (value) => {
+    expect(toBoolean({ value })).toBeUndefined();
   });
 });

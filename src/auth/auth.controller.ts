@@ -72,6 +72,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Authenticate with email and password (roles come from GET /me)',
   })
@@ -200,6 +201,7 @@ export class AuthController {
 
   @ApiBearerAuth()
   @Post('change-password')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Change the current user password' })
   @ApiOkResponse({ description: 'Password updated' })
   async changePassword(
