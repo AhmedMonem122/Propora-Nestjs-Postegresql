@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,6 +20,7 @@ import {
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { AuditEntity } from '../audit/audit.decorator.js';
 import { BuildingsService } from './buildings.service.js';
+import { BuildingQueryDto } from './dto/building-query.dto.js';
 import { CreateBuildingDto, UpdateBuildingDto } from './dto/building.dto.js';
 
 @ApiBearerAuth()
@@ -31,9 +33,12 @@ export class BuildingsController {
   @Get('properties/:propertyId/buildings')
   @RequirePermissions('building:read')
   @ApiOperation({ summary: 'List buildings of a property' })
-  @ApiOkResponse({ description: 'Buildings' })
-  findAllByProperty(@Param('propertyId') propertyId: string) {
-    return this.buildingsService.findAllByProperty(propertyId);
+  @ApiOkResponse({ description: 'Paginated buildings' })
+  findAllByProperty(
+    @Param('propertyId') propertyId: string,
+    @Query() query: BuildingQueryDto,
+  ) {
+    return this.buildingsService.findAllByProperty(propertyId, query);
   }
 
   @Post('properties/:propertyId/buildings')

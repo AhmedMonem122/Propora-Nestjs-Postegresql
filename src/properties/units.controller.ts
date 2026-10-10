@@ -19,7 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { AuditEntity } from '../audit/audit.decorator.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
+import { UnitQueryDto } from './dto/unit-query.dto.js';
 import { UnitsService } from './units.service.js';
 import { CreateUnitDto, UpdateUnitDto } from './dto/unit.dto.js';
 
@@ -33,9 +33,12 @@ export class UnitsController {
   @Get('buildings/:buildingId/units')
   @RequirePermissions('unit:read')
   @ApiOperation({ summary: 'List units of a building' })
-  @ApiOkResponse({ description: 'Units' })
-  findAllByBuilding(@Param('buildingId') buildingId: string) {
-    return this.unitsService.findAllByBuilding(buildingId);
+  @ApiOkResponse({ description: 'Paginated units' })
+  findAllByBuilding(
+    @Param('buildingId') buildingId: string,
+    @Query() query: UnitQueryDto,
+  ) {
+    return this.unitsService.findAllByBuilding(buildingId, query);
   }
 
   @Get('properties/:propertyId/units')
@@ -44,7 +47,7 @@ export class UnitsController {
   @ApiOkResponse({ description: 'Paginated units' })
   findAllByProperty(
     @Param('propertyId') propertyId: string,
-    @Query() query: PaginationQueryDto,
+    @Query() query: UnitQueryDto,
   ) {
     return this.unitsService.findAllByProperty(propertyId, query);
   }

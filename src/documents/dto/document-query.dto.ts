@@ -21,4 +21,9 @@ export class DocumentQueryDto extends PaginationQueryDto {
   @IsEnum(DocumentCategory)
   @IsOptional()
   category?: DocumentCategory;
+
+  @ApiPropertyOptional({ description: 'Search by file name' })
+  @IsString()
+  @IsOptional()
+  search?: string;
 }

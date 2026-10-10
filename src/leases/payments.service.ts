@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, PaymentStatus } from '@prisma/client';
+import { Prisma, PaymentStatus, PaymentType } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
 import { BillingService } from '../billing/billing.service.js';
@@ -16,6 +16,7 @@ import {
 export interface PaymentListQuery {
   leaseId?: string;
   status?: PaymentStatus;
+  type?: PaymentType;
   method?: string;
   overdue?: boolean;
   page?: number;
@@ -38,6 +39,7 @@ export class PaymentsService {
       organizationId,
       ...(query.leaseId ? { leaseId: query.leaseId } : {}),
       ...(query.status ? { status: query.status } : {}),
+      ...(query.type ? { type: query.type } : {}),
       ...(query.method ? { method: query.method as Prisma.EnumPaymentMethodFilter } : {}),
       ...(query.overdue
         ? {

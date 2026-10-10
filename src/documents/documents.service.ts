@@ -24,6 +24,7 @@ export interface DocumentListQuery {
   entityType?: string;
   entityId?: string;
   category?: DocumentCategory;
+  search?: string;
   page?: number;
   limit?: number;
 }
@@ -63,6 +64,9 @@ export class DocumentsService {
       ...(query.entityType ? { entityType: query.entityType } : {}),
       ...(query.entityId ? { entityId: query.entityId } : {}),
       ...(query.category ? { category: query.category } : {}),
+      ...(query.search
+        ? { name: { contains: query.search, mode: 'insensitive' } }
+        : {}),
     };
 
     const [total, documents] = await this.prisma.$transaction([

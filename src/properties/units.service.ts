@@ -1,14 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { UnitStatus } from '@prisma/client';
+import { Prisma, UnitStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
 import {
   buildPaginationMeta,
   normalizePagination,
   paginated,
-  PaginationParams,
 } from '../common/utils/pagination.util.js';
 import { CreateUnitDto, UpdateUnitDto } from './dto/unit.dto.js';
+import { UnitQueryDto } from './dto/unit-query.dto.js';
 
 export interface UnitListQuery {
   status?: UnitStatus;
@@ -24,18 +24,44 @@ export class UnitsService {
     private readonly tenantContext: TenantContextService,
   ) {}
 
-  async findAllByBuilding(buildingId: string) {
+  async findAllByBuilding(buildingId: string, query: UnitQueryDto = {}) {
     const organizationId = this.tenantContext.requireOrganizationId();
 
     await this.assertBuildingInOrganization(buildingId, organizationId);
 
-    return this.prisma.unit.findMany({
-      where: { organizationId, buildingId },
-      orderBy: { name: 'asc' },
-    });
+    const { page, limit, skip, take } = normalizePagination(query);
+    const where: Prisma.UnitWhereInput = {
+      organizationId,
+      buildingId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { name: { contains: query.search, mode: 'insensitive' } },
+              { unitNumber: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, units] = await this.prisma.$transaction([
+      this.prisma.unit.count({ where }),
+      this.prisma.unit.findMany({
+        where,
+        include: { unitType: true },
+        orderBy: { name: 'asc' },
+        skip,
+        take,
+      }),
+    ]);
+
+    return paginated(units, buildPaginationMeta(total, page, limit));
   }
 
-  async findAllByProperty(propertyId: string, query: PaginationParams = {}) {
+  async findAllByProperty(
+    propertyId: string,
+    query: UnitQueryDto = {},
+  ) {
     const organizationId = this.tenantContext.requireOrganizationId();
 
     const property = await this.prisma.property.findFirst({
@@ -47,14 +73,28 @@ export class UnitsService {
     }
 
     const { page, limit, skip, take } = normalizePagination(query);
+    const where: Prisma.UnitWhereInput = {
+      organizationId,
+      building: { propertyId },
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { name: { contains: query.search, mode: 'insensitive' } },
+              { unitNumber: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
 
     const [total, units] = await this.prisma.$transaction([
-      this.prisma.unit.count({
-        where: { organizationId, building: { propertyId } },
-      }),
+      this.prisma.unit.count({ where }),
       this.prisma.unit.findMany({
-        where: { organizationId, building: { propertyId } },
-        include: { building: { select: { name: true, code: true } } },
+        where,
+        include: {
+          building: { select: { name: true, code: true } },
+          unitType: true,
+        },
         orderBy: { name: 'asc' },
         skip,
         take,

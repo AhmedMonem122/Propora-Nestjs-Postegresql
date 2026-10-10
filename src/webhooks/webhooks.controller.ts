@@ -19,7 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator.js';
 import { AuditEntity } from '../audit/audit.decorator.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
+import { DeliveryQueryDto } from './dto/delivery-query.dto.js';
 import { WebhooksService } from './webhooks.service.js';
 import {
   CreateWebhookEndpointDto,
@@ -96,7 +96,7 @@ export class WebhooksController {
   @RequirePermissions('webhook:read')
   @ApiOperation({ summary: 'List delivery attempts for an endpoint' })
   @ApiOkResponse({ description: 'Paginated deliveries' })
-  deliveries(@Param('id') id: string, @Query() query: PaginationQueryDto) {
+  deliveries(@Param('id') id: string, @Query() query: DeliveryQueryDto) {
     return this.webhooksService.deliveries(id, query);
   }
 }

@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, ResidentStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
 import {
@@ -15,6 +15,7 @@ import { CreateResidentDto, UpdateResidentDto } from './dto/resident.dto.js';
 
 export interface ResidentListQuery {
   search?: string;
+  status?: ResidentStatus;
   page?: number;
   limit?: number;
 }
@@ -32,6 +33,7 @@ export class ResidentsService {
 
     const where: Prisma.ResidentWhereInput = {
       organizationId,
+      ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
             OR: [

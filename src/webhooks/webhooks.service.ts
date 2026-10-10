@@ -102,11 +102,14 @@ export class WebhooksService {
 
   async deliveries(
     endpointId: string,
-    query: { page?: number; limit?: number },
+    query: { page?: number; limit?: number; success?: boolean },
   ) {
     const endpoint = await this.findOne(endpointId);
     const { page, limit, skip, take } = normalizePagination(query);
-    const where = { endpointId: endpoint.id };
+    const where: Prisma.WebhookDeliveryWhereInput = {
+      endpointId: endpoint.id,
+      ...(query.success !== undefined ? { success: query.success } : {}),
+    };
 
     const [total, items] = await this.prisma.$transaction([
       this.prisma.webhookDelivery.count({ where }),

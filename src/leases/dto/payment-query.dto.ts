@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString } from 'class-validator';
-import { PaymentMethod, PaymentStatus } from '@prisma/client';
+import { PaymentMethod, PaymentStatus, PaymentType } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import { IsBoolean } from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto.js';
@@ -16,6 +16,11 @@ export class PaymentQueryDto extends PaginationQueryDto {
   @IsEnum(PaymentStatus)
   @IsOptional()
   status?: PaymentStatus;
+
+  @ApiPropertyOptional({ enum: PaymentType })
+  @IsEnum(PaymentType)
+  @IsOptional()
+  type?: PaymentType;
 
   @ApiPropertyOptional({ enum: PaymentMethod })
   @IsEnum(PaymentMethod)
