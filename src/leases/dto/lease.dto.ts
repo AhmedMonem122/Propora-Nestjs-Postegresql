@@ -1,5 +1,5 @@
 import {
-  IsDateString,
+  IsDate,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -24,12 +24,12 @@ export class CreateLeaseDto {
   residentId: string;
 
   @ApiProperty({ example: '2026-11-01' })
-  @IsDateString()
+  @IsDate()
   @Type(() => Date)
   startDate: Date;
 
   @ApiPropertyOptional({ example: '2027-11-01' })
-  @IsDateString()
+  @IsDate()
   @Type(() => Date)
   @IsOptional()
   endDate?: Date | null;
@@ -74,13 +74,13 @@ export class UpdateLeaseDto {
   residentId?: string;
 
   @ApiPropertyOptional({ example: '2026-11-01' })
-  @IsDateString()
+  @IsDate()
   @Type(() => Date)
   @IsOptional()
   startDate?: Date;
 
   @ApiPropertyOptional({ example: '2027-11-01' })
-  @IsDateString()
+  @IsDate()
   @Type(() => Date)
   @IsOptional()
   endDate?: Date | null;

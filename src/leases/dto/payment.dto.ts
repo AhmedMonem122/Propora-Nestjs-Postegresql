@@ -1,5 +1,5 @@
 import {
-  IsDateString,
+  IsDate,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -40,12 +40,12 @@ export class CreatePaymentDto {
   status?: PaymentStatus;
 
   @ApiProperty({ example: '2026-11-01' })
-  @IsDateString()
+  @IsDate()
   @Type(() => Date)
   dueDate: Date;
 
   @ApiPropertyOptional({ example: '2026-10-28' })
-  @IsDateString()
+  @IsDate()
   @Type(() => Date)
   @IsOptional()
   paidAt?: Date | null;
@@ -92,13 +92,13 @@ export class UpdatePaymentDto {
   status?: PaymentStatus;
 
   @ApiPropertyOptional({ example: '2026-11-01' })
-  @IsDateString()
+  @IsDate()
   @Type(() => Date)
   @IsOptional()
   dueDate?: Date;
 
   @ApiPropertyOptional({ example: '2026-10-28' })
-  @IsDateString()
+  @IsDate()
   @Type(() => Date)
   @IsOptional()
   paidAt?: Date | null;

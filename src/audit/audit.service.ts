@@ -22,8 +22,8 @@ export interface AuditLogQuery {
   entityType?: string;
   entityId?: string;
   userId?: string;
-  from?: string;
-  to?: string;
+  from?: string | Date;
+  to?: string | Date;
   page?: number;
   limit?: number;
 }

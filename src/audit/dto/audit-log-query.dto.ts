@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsOptional, IsString } from 'class-validator';
+import { IsDate, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto.js';
 
 export class AuditLogQueryDto extends PaginationQueryDto {
@@ -23,13 +24,15 @@ export class AuditLogQueryDto extends PaginationQueryDto {
   @IsString()
   userId?: string;
 
-  @ApiPropertyOptional({ description: 'ISO start date' })
+  @ApiPropertyOptional({ description: 'ISO start date (YYYY-MM-DD accepted)' })
   @IsOptional()
-  @IsDateString()
-  from?: string;
+  @Type(() => Date)
+  @IsDate()
+  from?: Date;
 
-  @ApiPropertyOptional({ description: 'ISO end date' })
+  @ApiPropertyOptional({ description: 'ISO end date (YYYY-MM-DD accepted)' })
   @IsOptional()
-  @IsDateString()
-  to?: string;
+  @Type(() => Date)
+  @IsDate()
+  to?: Date;
 }

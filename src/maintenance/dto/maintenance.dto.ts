@@ -1,5 +1,5 @@
 import {
-  IsDateString,
+  IsDate,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -78,7 +78,7 @@ export class AssignMaintenanceDto {
   assignedToId: string;
 
   @ApiPropertyOptional({ example: '2026-10-08T10:00:00Z' })
-  @IsDateString()
+  @IsDate()
   @Type(() => Date)
   @IsOptional()
   scheduledAt?: Date;
