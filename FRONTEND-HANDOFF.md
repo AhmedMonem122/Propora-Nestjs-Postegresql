@@ -92,8 +92,8 @@ app/
 proxy.ts                  # auth gating (refresh-cookie presence)
 components/
   ui/                     # shadcn only (button, dialog, alert-dialog, sonner, skeleton,
-                          # form, input, table, dropdown, sheet, avatar, badge, calendar,
-                          # popover, command, chart?, textarea, select…)
+                          # form, input, input-otp, table, dropdown, sheet, avatar, badge,
+                          # calendar, popover, command, chart?, textarea, select…)
   common/                 # DataTable/, ConfirmDialog, EmptyState, ErrorState,
                           # PageHeader (title + search + reload), Skeletons/, Pagination,
                           # CommandPalette/ (⌘K global search across entities),
@@ -157,7 +157,8 @@ Tailwind + shadcn tokens (dark-mode ready from day one).
 
 - [ ] `/`, `/services`, `/about`, `/contact` (RSC, metadata, animations)
 - [ ] `/login` (email+password, no role picker — roles come from the API),
-  silent-refresh boot, redirect-to-next
+  silent-refresh boot, redirect-to-next; `/forgot-password` + `/reset-password`
+  (OTP via shadcn `input-otp`, `inputMode="numeric"`)
 - [ ] `/dashboard` overview (financial + occupancy cards **+ Recharts charts**,
   **⌘K command palette** global)
 - [ ] Properties → Buildings → Units (nested routes, search/filters, unit-type
@@ -188,7 +189,8 @@ Tailwind + shadcn tokens (dark-mode ready from day one).
 - **Axios**: `baseURL=NEXT_PUBLIC_API_URL`, `withCredentials:true`,
   request: attach in-memory access token; response 401 → single-flight refresh
   via cookie → retry once → else logout to `/login`. Never store tokens in
-  `localStorage`.
+  `localStorage`/`sessionStorage`/URLs. Logout clears memory + query cache +
+  notifies other tabs via `BroadcastChannel` (multi-tab logout without storage).
 - **proxy.ts gating**: dashboard routes require the refresh cookie; missing →
   `/login?next=…`. Fine-grained UI gating via `hasPermission(name)` from `/me`.
 - **Pagination** (every list): `{data, meta:{total,page,limit,totalPages,hasNext,hasPrev}}`.
@@ -271,6 +273,26 @@ NEXT_PUBLIC_APP_URL=https://<frontend>.vercel.app   # metadata/OG only
 - **Security headers** (`next.config` + Vercel): `poweredByHeader:false`,
   `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`,
   `Referrer-Policy`. No secrets in client code — only `NEXT_PUBLIC_*`.
+- **Frontend security checklist (enforced, not aspirational):**
+  - UI gating (`hasPermission`, hidden buttons) is UX only — **authorization
+    lives in the backend** (it does). Never trust the client for access control.
+  - No `dangerouslySetInnerHTML` anywhere (lint rule `react/no-danger` on);
+    user files render as downloads or `next/image` only — never as HTML
+    (SVG uploads are already rejected server-side; keep it that way).
+  - External/new-tab links always `rel="noopener noreferrer"` (invoice PDFs,
+    Supabase file URLs, docs links).
+  - Sentry `beforeSend` scrubs `Authorization` headers, cookies, tokens and
+    emails; query cache devtools **off** in production; no tokens in Sentry,
+    logs, or URLs (billing pages use non-secret `paymentId` only).
+  - Password fields use `autocomplete="current-password"` /
+    `"new-password"`; OTP uses `input-otp`; passwords never leave the submit
+    handler (no state, no logs).
+  - Client-side upload checks (5MB/type) are UX pre-checks — the server
+    re-enforces everything; never rely on them for security.
+  - `npm audit` runs in CI (high/critical breaks the build); Dependabot for
+    the rest. No new dependency without checking its maintenance + CVEs.
+  - Prod hides internals: Next error boundaries show `ErrorState`, never
+    stacks; API mapper shows user-safe messages only.
 - **Repo files:** `AGENTS.md` (commands, conventions, DoD pointer),
   `.editorconfig`, `.nvmrc` (Node 22), Dependabot (monthly Shoe updates),
   `.env.example` (all 4 vars documented, values empty).
