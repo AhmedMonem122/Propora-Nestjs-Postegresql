@@ -35,11 +35,20 @@ A senior-level **Next.js 16 (latest stable at scaffold time — verify with docs
 | Tables | Generic `DataTable` built on **TanStack Table** (server search/pagination/sort) |
 | Toasts | **Sonner** (shadcn `Toaster` in root layout). No react-hot-toast |
 | Delete confirm | shadcn `AlertDialog` ("Are you sure?" → Delete / Cancel) — every destructive action |
+| Charts | **Recharts** (rent-collected bars, occupancy donut on overview; dynamic-imported) |
+| Dates | **date-fns** (formatting, due-date badges, ranges). No moment/dayjs |
+| Money inputs | **react-number-format** (`NumericFormat`) for rent/deposit fields |
+| Phone inputs | `react-phone-number-input` (EG numbers default) — optional but recommended |
+| i18n | **next-intl** (App Router native). Ship EN first; message files ready, Arabic/RTL stretch later |
+| Theme | **next-themes** (dark mode toggle from day one — recruiters check it) |
+| Monitoring | **@sentry/nextjs** (free tier, tunnel) — recommended, not mandatory |
+| Analytics | **@vercel/analytics + @vercel/speed-insights** (free, real perf proof) |
 | Loading | Route `loading.tsx` + `Suspense` + **shadcn `Skeleton`** matching final layout (no layout shift) + button pending states + `isFetching` indicators |
 | Errors | `error.tsx` per segment + `global-error.tsx` + `not-found.tsx` + `ErrorState` component with retry (`reset()`) + API error mapper (§8) |
 | Animations | `framer-motion` (a.k.a. `motion`, latest): `whileInView` once, transform/opacity only, `useReducedMotion` respected, never animate table data |
 | Fonts/media | `next/font`, `next/image` with `remotePatterns` for the Supabase storage host |
 | State | **React Context** (`AuthProvider`, `PreferencesProvider` if needed). No zustand/redux |
+| Quality gates | **Vitest + Testing Library + MSW** (unit), **Playwright** (e2e smoke), **Husky + lint-staged** pre-commit (`tsc`, eslint, prettier), **@next/bundle-analyzer** check |
 | Commits | Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`…), push to GitHub |
 | Deploy | Vercel, env per environment (§11) |
 
@@ -55,8 +64,12 @@ A senior-level **Next.js 16 (latest stable at scaffold time — verify with docs
   caching/optimistic updates beat actions for this app).
 - **Cache Components / `use cache`** for slow public fragments if stable in the
   scaffolded version; otherwise route-level `revalidate`.
-- `generateMetadata` per page, `sitemap.ts`, `robots.ts`, OG images,
-  JSON-LD `Organization` schema on Home.
+- **i18n via next-intl**: `[locale]` segment optional at first — ship `en`
+  messages, keep every user-facing string in `messages/en.json` (never hardcoded),
+  `dir` handling ready so Arabic/RTL is a translation drop later (backend already
+  stores per-org `language`).
+- `generateMetadata` per page, `sitemap.ts`, `robots.ts` (disallow `/dashboard`,
+  `/login`), OG images, JSON-LD `Organization` schema on Home.
 - Async `params`/`searchParams` (Next 15+ breaking change — await them).
 
 ## 4. Folder structure (colocation rule — the requested convention)
@@ -79,9 +92,12 @@ app/
 proxy.ts                  # auth gating (refresh-cookie presence)
 components/
   ui/                     # shadcn only (button, dialog, alert-dialog, sonner, skeleton,
-                          # form, input, table, dropdown, sheet, avatar, badge, calendar…)
+                          # form, input, table, dropdown, sheet, avatar, badge, calendar,
+                          # popover, command, chart?, textarea, select…)
   common/                 # DataTable/, ConfirmDialog, EmptyState, ErrorState,
-                          # PageHeader (title + search + reload), Skeletons/, Pagination
+                          # PageHeader (title + search + reload), Skeletons/, Pagination,
+                          # CommandPalette/ (⌘K global search across entities),
+                          # CurrencyInput/, PhoneInput/, Charts/ (lazy wrappers)
   layout/                 # SiteHeader, SiteFooter, Sidebar, Topbar, ThemeToggle…
   marketing/              # Hero/, FeatureGrid/, Stats/, CTASection/, ContactForm/…
                           # each: ComponentName/ComponentName.tsx (+ .module.css if needed)
@@ -94,11 +110,15 @@ lib/
   supabase.ts             # browser client (anon key) for Realtime only
   auth-context.tsx        # AuthProvider: user/roles/permissions + hasPermission()
   permissions.ts          # permission-name helpers (mirrors backend catalog)
-  format.ts               # currency/number/date formatters (Intl)
+  format.ts               # currency/number/date formatters (Intl + date-fns)
+  csv.ts                  # tiny JSON→CSV download helper (reports export, no lib)
   constants.ts            # pagination defaults, file limits, mimetypes
 hooks/                    # useDebouncedValue (search inputs), useMediaQuery…
 types/                    # api.ts — mirror backend DTOs (access/refresh/user/payment/…)
 schemas/                  # shared zod schemas only (form-specific ones stay colocated)
+messages/                 # en.json (all UI strings; ar.json later for RTL stretch)
+e2e/                      # Playwright smoke (login → create property → delete)
+AGENTS.md                 # repo conventions for humans + AI sessions (commands, rules)
 public/                   # OG images, favicons, marketing assets
 ```
 
@@ -119,6 +139,11 @@ Tailwind + shadcn tokens (dark-mode ready from day one).
 - Dashboard: dense professional SaaS — collapsible sidebar (Sheet on mobile),
   topbar with global search shortcut + notification bell (live badge via §9) +
   user menu, stat cards, tabs where sensible, consistent PageHeader everywhere.
+- Dashboard overview: financial + occupancy **charts** (Recharts, lazy-loaded)
+  fed by `/reports/*` — the visual payoff of the reports module.
+- Command palette (⌘K, shadcn Command): jump to any entity by name (properties,
+  residents, leases…) using existing `?search=` endpoints — the single most
+  impressive 2-hour feature on this list.
 - Accessibility: semantic landmarks (`header/main/nav/footer`, real `<table>`),
   `<label>` on every input, focus-visible rings, `aria-*` on dialogs/menus
   (Radix gives most of this free), skip-to-content link, contrast-checked
@@ -133,7 +158,8 @@ Tailwind + shadcn tokens (dark-mode ready from day one).
 - [ ] `/`, `/services`, `/about`, `/contact` (RSC, metadata, animations)
 - [ ] `/login` (email+password, no role picker — roles come from the API),
   silent-refresh boot, redirect-to-next
-- [ ] `/dashboard` overview (financial + occupancy cards)
+- [ ] `/dashboard` overview (financial + occupancy cards **+ Recharts charts**,
+  **⌘K command palette** global)
 - [ ] Properties → Buildings → Units (nested routes, search/filters, unit-type
   picker from `GET /unit-types`, money inputs as numbers)
 - [ ] Residents (search/status, link-user dialog), Leases (overlap errors shown
@@ -142,7 +168,7 @@ Tailwind + shadcn tokens (dark-mode ready from day one).
 - [ ] Maintenance (filters, assign dialog, status flow), Documents (upload with
   progress + type/size client pre-checks mirroring the API: 5MB + allowlist),
   Notifications inbox (unread filter, mark-read, read-all), Reports (currency
-  from settings), Settings (profile + localization form), Users (invite +
+  from settings + **CSV export button**), Settings (profile + localization form), Users (invite +
   roles dialog), Roles (permissions checklist), Audit log (filters), Webhooks
   (CRUD + test-ping + deliveries drawer + rotate-secret dialog)
 
@@ -203,7 +229,8 @@ NEXT_PUBLIC_APP_URL=https://<frontend>.vercel.app   # metadata/OG only
 
 ## 9. Definition of done (verify all before pushing)
 
-- [ ] `tsc --noEmit`, `next lint`, `next build` green; no `any`, no console logs
+- [ ] `tsc --noEmit`, eslint, `next build` green; unit + e2e suites green;
+  pre-commit hooks (husky) installed; no `any`, no console logs
 - [ ] Every table: search works, pagination works, reload refetches, empty +
       loading (skeleton) + error (+retry) states all reachable and styled
 - [ ] Every delete behind AlertDialog; every mutation toasts success/error
@@ -212,16 +239,41 @@ NEXT_PUBLIC_APP_URL=https://<frontend>.vercel.app   # metadata/OG only
 - [ ] Marketing: Lighthouse-friendly (images, fonts, metadata, sitemap),
       responsive at 360/768/1280/1920, keyboard + reduced-motion checked
 - [ ] Realtime bell updates without refresh (two browsers test)
-- [ ] Vercel preview deploy green with the 4 env vars above
+- [ ] All user-facing strings via `messages/en.json` (no hardcoded copy —
+      Arabic/RTL later is translations-only)
+- [ ] Vercel preview deploy green with the 4 env vars above (+ analytics
+      showing real data, bundle size sane per analyzer)
 
 ## 10. Start order for the implementer session
 
 1. `npx create-next-app@latest` (TS + Tailwind + App Router + Turbopack),
    install: `axios @tanstack/react-query @tanstack/react-table react-hook-form
-   zod @hookform/resolvers framer-motion lucide-react @supabase/supabase-js`,
+   zod @hookform/resolvers framer-motion lucide-react @supabase/supabase-js
+   recharts date-fns next-intl next-themes react-number-format
+   @vercel/analytics @vercel/speed-insights`,
+   dev: `vitest @testing-library/react @testing-library/jest-dom msw playwright
+   @axe-core/playwright husky lint-staged @next/bundle-analyzer
+   @sentry/nextjs` (sentry optional),
    `shadcn init` + add needed primitives + `sonner`.
 2. Shell first: root layout (fonts/Toaster/providers), proxy.ts, login page,
    dashboard layout, PageHeader/DataTable/ConfirmDialog/ErrorState/Skeletons.
 3. Marketing pages (fast wins, SEO), then domain pages module by module,
    auth + realtime wiring throughout, final DoD pass, conventional commits,
    push to GitHub, Vercel deploy.
+
+## 11. Testing, security & repo hygiene (the parts most CVs skip)
+
+- **Unit (vitest + Testing Library + MSW):** auth context + permission gating,
+  form validation schemas, DataTable behaviors, currency/date formatters,
+  axios 401-retry interceptor. Mock the API with MSW handlers mirroring §7.
+- **E2E (Playwright):** login → create property → upload doc → delete property;
+  a11y spot-check via `@axe-core/playwright` on dashboard + marketing.
+- **Security headers** (`next.config` + Vercel): `poweredByHeader:false`,
+  `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy`. No secrets in client code — only `NEXT_PUBLIC_*`.
+- **Repo files:** `AGENTS.md` (commands, conventions, DoD pointer),
+  `.editorconfig`, `.nvmrc` (Node 22), Dependabot (monthly Shoe updates),
+  `.env.example` (all 4 vars documented, values empty).
+- **Explicitly out of scope:** Storybook, PWA wrapper, CMS, platform-admin UI
+  (phase 2), backend changes (contract is frozen — discrepancies go back to
+  the backend session with a Swagger link + request/response paste).
