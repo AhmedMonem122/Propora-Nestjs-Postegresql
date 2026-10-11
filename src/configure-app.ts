@@ -18,7 +18,7 @@ export async function configureApp(app: INestApplication): Promise<void> {
     configService.get<string>('NODE_ENV', 'development'),
   );
   app.enableCors({
-    origin: cors.origin as string,
+    origin: cors.origin,
     credentials: cors.credentials,
   });
 

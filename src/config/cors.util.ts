@@ -3,13 +3,31 @@ export interface CorsSettings {
   credentials: boolean;
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Turns one CORS_ORIGIN entry into a literal origin or a RegExp.
+ * `https://*.vercel.app` matches any preview/production deployment under
+ * that domain (handy because Vercel preview URLs change per branch).
+ * Prefer exact origins in production — a wildcard trusts every subdomain.
+ */
+function toOriginPattern(entry: string): string | RegExp {
+  if (!entry.includes('*')) {
+    return entry;
+  }
+  const pattern = `^${entry.split('*').map(escapeRegExp).join('.*')}$`;
+  return new RegExp(pattern);
+}
+
 /**
  * Parses CORS_ORIGIN (comma-separated, `*` = public API).
  *
  * Browsers reject `Access-Control-Allow-Origin: *` when credentials are
  * included, so a wildcard origin automatically disables credentials.
- * Cross-origin dashboards that rely on httpOnly cookies must set an
- * explicit origin (and usually COOKIE_SAMESITE=none).
+ * Cross-origin dashboards that rely on httpOnly cookies must set explicit
+ * origin(s) (and usually COOKIE_SAMESITE=none).
  */
 export function parseCorsSettings(
   raw: string | undefined,
@@ -32,5 +50,5 @@ export function parseCorsSettings(
     return { origin: '*', credentials: false };
   }
 
-  return { origin: list, credentials: true };
+  return { origin: list.map(toOriginPattern), credentials: true };
 }
