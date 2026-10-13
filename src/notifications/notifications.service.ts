@@ -8,6 +8,7 @@ import {
   normalizePagination,
   paginated,
 } from '../common/utils/pagination.util.js';
+import { splitSearchTerms } from '../common/utils/search.util.js';
 
 export interface NotificationListQuery {
   unreadOnly?: boolean;
@@ -43,10 +44,12 @@ export class NotificationsService {
       ...(query.unreadOnly ? { readAt: null } : {}),
       ...(query.search
         ? {
-            OR: [
-              { title: { contains: query.search, mode: 'insensitive' } },
-              { body: { contains: query.search, mode: 'insensitive' } },
-            ],
+            AND: splitSearchTerms(query.search).map((term) => ({
+              OR: [
+                { title: { contains: term, mode: 'insensitive' } },
+                { body: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
           }
         : {}),
     };

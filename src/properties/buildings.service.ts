@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
+import { splitSearchTerms } from '../common/utils/search.util.js';
 import {
   buildPaginationMeta,
   normalizePagination,
@@ -28,10 +29,12 @@ export class BuildingsService {
       propertyId,
       ...(query.search
         ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { code: { contains: query.search, mode: 'insensitive' } },
-            ],
+            AND: splitSearchTerms(query.search).map((term) => ({
+              OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { code: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
           }
         : {}),
     };

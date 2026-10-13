@@ -11,6 +11,7 @@ import {
   normalizePagination,
   paginated,
 } from '../common/utils/pagination.util.js';
+import { splitSearchTerms } from '../common/utils/search.util.js';
 import { CreateResidentDto, UpdateResidentDto } from './dto/resident.dto.js';
 
 export interface ResidentListQuery {
@@ -36,12 +37,14 @@ export class ResidentsService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
-            OR: [
-              { firstName: { contains: query.search, mode: 'insensitive' } },
-              { lastName: { contains: query.search, mode: 'insensitive' } },
-              { email: { contains: query.search, mode: 'insensitive' } },
-              { phone: { contains: query.search, mode: 'insensitive' } },
-            ],
+            AND: splitSearchTerms(query.search).map((term) => ({
+              OR: [
+                { firstName: { contains: term, mode: 'insensitive' } },
+                { lastName: { contains: term, mode: 'insensitive' } },
+                { email: { contains: term, mode: 'insensitive' } },
+                { phone: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
           }
         : {}),
     };

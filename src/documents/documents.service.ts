@@ -14,6 +14,7 @@ import {
   normalizePagination,
   paginated,
 } from '../common/utils/pagination.util.js';
+import { splitSearchTerms } from '../common/utils/search.util.js';
 import {
   CreateDocumentDto,
   UpdateDocumentDto,
@@ -65,7 +66,11 @@ export class DocumentsService {
       ...(query.entityId ? { entityId: query.entityId } : {}),
       ...(query.category ? { category: query.category } : {}),
       ...(query.search
-        ? { name: { contains: query.search, mode: 'insensitive' } }
+        ? {
+            AND: splitSearchTerms(query.search).map((term) => ({
+              name: { contains: term, mode: 'insensitive' },
+            })),
+          }
         : {}),
     };
 
@@ -257,13 +262,17 @@ export class DocumentsService {
   private assertEntityType(entityType: string): string {
     const normalized = entityType.toLowerCase();
 
-    if (!ALLOWED_ENTITY_TYPES.includes(normalized)) {
+    // Friendly alias: every other surface calls them "maintenance".
+    const canonical =
+      normalized === 'maintenance' ? 'maintenance_request' : normalized;
+
+    if (!ALLOWED_ENTITY_TYPES.includes(canonical)) {
       throw new BadRequestException(
         `Invalid entity type. Allowed: ${ALLOWED_ENTITY_TYPES.join(', ')}`,
       );
     }
 
-    return normalized;
+    return canonical;
   }
 
   private buildStoragePath(

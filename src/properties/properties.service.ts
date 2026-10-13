@@ -7,6 +7,7 @@ import {
   normalizePagination,
   paginated,
 } from '../common/utils/pagination.util.js';
+import { splitSearchTerms } from '../common/utils/search.util.js';
 import { CreatePropertyDto, UpdatePropertyDto } from './dto/property.dto.js';
 
 export interface PropertyListQuery {
@@ -38,11 +39,13 @@ export class PropertiesService {
         : {}),
       ...(query.search
         ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { city: { contains: query.search, mode: 'insensitive' } },
-              { country: { contains: query.search, mode: 'insensitive' } },
-            ],
+            AND: splitSearchTerms(query.search).map((term) => ({
+              OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { city: { contains: term, mode: 'insensitive' } },
+                { country: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
           }
         : {}),
     };

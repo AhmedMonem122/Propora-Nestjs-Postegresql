@@ -18,6 +18,7 @@ import {
   normalizePagination,
   paginated,
 } from '../common/utils/pagination.util.js';
+import { splitSearchTerms } from '../common/utils/search.util.js';
 import { EventBus } from '../common/events/event-bus.js';
 import { AuditService } from '../audit/audit.service.js';
 import { RbacService } from '../rbac/rbac.service.js';
@@ -55,10 +56,12 @@ export class PlatformService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { slug: { contains: query.search, mode: 'insensitive' } },
-            ],
+            AND: splitSearchTerms(query.search).map((term) => ({
+              OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { slug: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
           }
         : {}),
     };
@@ -298,11 +301,13 @@ export class PlatformService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
-            OR: [
-              { firstName: { contains: query.search, mode: 'insensitive' } },
-              { lastName: { contains: query.search, mode: 'insensitive' } },
-              { email: { contains: query.search, mode: 'insensitive' } },
-            ],
+            AND: splitSearchTerms(query.search).map((term) => ({
+              OR: [
+                { firstName: { contains: term, mode: 'insensitive' } },
+                { lastName: { contains: term, mode: 'insensitive' } },
+                { email: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
           }
         : {}),
     };

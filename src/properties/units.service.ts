@@ -8,6 +8,7 @@ import {
   paginated,
 } from '../common/utils/pagination.util.js';
 import { CreateUnitDto, UpdateUnitDto } from './dto/unit.dto.js';
+import { splitSearchTerms } from '../common/utils/search.util.js';
 import { UnitQueryDto } from './dto/unit-query.dto.js';
 
 export interface UnitListQuery {
@@ -39,10 +40,12 @@ export class UnitsService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { unitNumber: { contains: query.search, mode: 'insensitive' } },
-            ],
+            AND: splitSearchTerms(query.search).map((term) => ({
+              OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { unitNumber: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
           }
         : {}),
     };
@@ -76,10 +79,12 @@ export class UnitsService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { unitNumber: { contains: query.search, mode: 'insensitive' } },
-            ],
+            AND: splitSearchTerms(query.search).map((term) => ({
+              OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { unitNumber: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
           }
         : {}),
     };
@@ -119,10 +124,12 @@ export class UnitsService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { unitNumber: { contains: query.search, mode: 'insensitive' } },
-            ],
+            AND: splitSearchTerms(query.search).map((term) => ({
+              OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { unitNumber: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
           }
         : {}),
     };

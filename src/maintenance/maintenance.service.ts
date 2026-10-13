@@ -14,6 +14,7 @@ import {
   normalizePagination,
   paginated,
 } from '../common/utils/pagination.util.js';
+import { splitSearchTerms } from '../common/utils/search.util.js';
 import {
   AssignMaintenanceDto,
   CloseMaintenanceDto,
@@ -53,10 +54,12 @@ export class MaintenanceService {
       ...(query.assignedToId ? { assignedToId: query.assignedToId } : {}),
       ...(query.search
         ? {
-            OR: [
-              { title: { contains: query.search, mode: 'insensitive' } },
-              { description: { contains: query.search, mode: 'insensitive' } },
-            ],
+            AND: splitSearchTerms(query.search).map((term) => ({
+              OR: [
+                { title: { contains: term, mode: 'insensitive' } },
+                { description: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
           }
         : {}),
     };
