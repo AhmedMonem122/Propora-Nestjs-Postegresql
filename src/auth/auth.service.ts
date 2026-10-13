@@ -303,7 +303,9 @@ export class AuthService {
     const userResponse = await this.buildUserResponse(userId);
     const permissions = await this.rbacService.getUserPermissions(userId);
 
-    return { ...userResponse, permissions };
+    // getUserPermissions returns a Set (right for .has() lookups), but a
+    // Set serializes to `{}` — the client would see zero permissions.
+    return { ...userResponse, permissions: [...permissions] };
   }
 
   async updateMe(userId: string, dto: UpdateMeDto, ip?: string) {
