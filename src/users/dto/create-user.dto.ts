@@ -10,6 +10,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsPhoneNumber } from '../../common/validators/phone.validator.js';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Mohamed' })
@@ -41,6 +42,7 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   @MaxLength(30)
+  @IsPhoneNumber()
   phone?: string;
 
   @ApiPropertyOptional({ type: [String], example: ['cm4x...'] })

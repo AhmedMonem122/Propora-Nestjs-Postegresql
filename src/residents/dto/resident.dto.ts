@@ -8,6 +8,8 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ResidentStatus } from '@prisma/client';
+import { IsPhoneNumber } from '../../common/validators/phone.validator.js';
+import { IsEgyptianNationalId } from '../../common/validators/national-id.validator.js';
 
 export class CreateResidentDto {
   @ApiPropertyOptional({
@@ -38,12 +40,14 @@ export class CreateResidentDto {
   @IsString()
   @MaxLength(30)
   @IsOptional()
+  @IsPhoneNumber()
   phone?: string;
 
-  @ApiPropertyOptional({ example: 'EG-29001010123456' })
+  @ApiPropertyOptional({ example: '29901011234567' })
   @IsString()
-  @MaxLength(50)
+  @MaxLength(14)
   @IsOptional()
+  @IsEgyptianNationalId()
   idNumber?: string;
 
   @ApiPropertyOptional({ enum: ResidentStatus })
@@ -95,12 +99,14 @@ export class UpdateResidentDto {
   @IsString()
   @MaxLength(30)
   @IsOptional()
+  @IsPhoneNumber()
   phone?: string;
 
-  @ApiPropertyOptional({ example: 'EG-29001010123456' })
+  @ApiPropertyOptional({ example: '29901011234567' })
   @IsString()
-  @MaxLength(50)
+  @MaxLength(14)
   @IsOptional()
+  @IsEgyptianNationalId()
   idNumber?: string;
 
   @ApiPropertyOptional({ enum: ResidentStatus })

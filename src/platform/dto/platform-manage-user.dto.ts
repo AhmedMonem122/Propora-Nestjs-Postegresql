@@ -9,6 +9,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { UserStatus } from '@prisma/client';
+import { IsPhoneNumber } from '../../common/validators/phone.validator.js';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto.js';
 
 export class AdminUserQueryDto extends PaginationQueryDto {
@@ -58,6 +59,7 @@ export class CreateManagedUserDto {
   @IsString()
   @MaxLength(30)
   @IsOptional()
+  @IsPhoneNumber()
   phone?: string;
 
   @ApiPropertyOptional({ description: 'Role ids inside the organization' })
@@ -86,6 +88,7 @@ export class UpdateManagedUserDto {
   @IsString()
   @MaxLength(30)
   @IsOptional()
+  @IsPhoneNumber()
   phone?: string;
 
   @ApiPropertyOptional({

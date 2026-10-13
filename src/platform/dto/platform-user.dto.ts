@@ -8,6 +8,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserStatus } from '@prisma/client';
+import { IsPhoneNumber } from '../../common/validators/phone.validator.js';
 
 export class CreatePlatformUserDto {
   @ApiProperty({ example: 'partner@example.com' })
@@ -30,6 +31,7 @@ export class CreatePlatformUserDto {
   @IsString()
   @MaxLength(30)
   @IsOptional()
+  @IsPhoneNumber()
   phone?: string;
 
   @ApiPropertyOptional({
@@ -64,6 +66,7 @@ export class UpdatePlatformUserDto {
   @IsString()
   @MaxLength(30)
   @IsOptional()
+  @IsPhoneNumber()
   phone?: string;
 
   @ApiPropertyOptional({ enum: UserStatus })
