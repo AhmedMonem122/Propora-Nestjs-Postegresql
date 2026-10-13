@@ -23,6 +23,7 @@ export class ReportsService {
       totalUnits,
       occupiedUnits,
       settings,
+      byMonth,
     ] = await Promise.all([
       this.prisma.lease.aggregate({
         where: { organizationId, status: 'ACTIVE' },
@@ -60,6 +61,7 @@ export class ReportsService {
         where: { organizationId },
         select: { currency: true },
       }),
+      this.monthlyCollection(organizationId, now, 6),
     ]);
 
     return {
@@ -78,9 +80,47 @@ export class ReportsService {
         amount: overdue._sum.amount ?? 0,
         count: overdue._count._all,
       },
+      byMonth,
       occupancyRate: totalUnits === 0 ? 0 : occupiedUnits / totalUnits,
       units: { total: totalUnits, occupied: occupiedUnits },
     };
+  }
+
+  /**
+   * Collected rent per calendar month (oldest → newest). Six small indexed
+   * aggregates in parallel — feeds the dashboard trend chart truthfully.
+   */
+  private async monthlyCollection(
+    organizationId: string,
+    now: Date,
+    months: number,
+  ): Promise<Array<{ month: string; collected: number }>> {
+    const buckets = Array.from({ length: months }, (_, i) => {
+      const cursor = new Date(now.getFullYear(), now.getMonth() - (months - 1 - i), 1);
+      return {
+        month: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`,
+        from: new Date(cursor.getFullYear(), cursor.getMonth(), 1),
+        to: new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1),
+      };
+    });
+
+    const sums = await Promise.all(
+      buckets.map((bucket) =>
+        this.prisma.payment.aggregate({
+          where: {
+            organizationId,
+            status: 'PAID',
+            paidAt: { gte: bucket.from, lt: bucket.to },
+          },
+          _sum: { amount: true },
+        }),
+      ),
+    );
+
+    return buckets.map((bucket, index) => ({
+      month: bucket.month,
+      collected: Number(sums[index]._sum.amount?.toString() ?? 0),
+    }));
   }
 
   async occupancy() {
