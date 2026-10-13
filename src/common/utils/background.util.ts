@@ -14,11 +14,15 @@ const logger = new Logger('Background');
  * floating promise, which the running process completes normally.
  */
 export function runInBackground(task: Promise<unknown>): void {
-  extendLifetime(task).catch((error: unknown) => {
+  // Guard FIRST: waitUntil() extends lifetime but does not consume the
+  // rejection — without this handler a failing task becomes an unhandled
+  // rejection (which fails test runs and litters serverless logs).
+  const guarded = task.catch((error: unknown) => {
     logger.warn(
       `Background task failed: ${(error as Error)?.message ?? error}`,
     );
   });
+  void extendLifetime(guarded);
 }
 
 async function extendLifetime(task: Promise<unknown>): Promise<void> {
@@ -27,7 +31,8 @@ async function extendLifetime(task: Promise<unknown>): Promise<void> {
     waitUntil(task);
   } catch {
     // Not on Vercel (or waitUntil unavailable): the process outlives the
-    // request here, so the floating promise runs to completion on its own.
+    // request here, so awaiting inline is equivalent. `task` is already
+    // guarded above and cannot reject.
     await task;
   }
 }
