@@ -1,3 +1,6 @@
+import type { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
 export interface CorsSettings {
   origin: string | (string | RegExp)[];
   credentials: boolean;
@@ -51,4 +54,22 @@ export function parseCorsSettings(
   }
 
   return { origin: list.map(toOriginPattern), credentials: true };
+}
+
+/**
+ * Registers CORS as the FIRST middleware so every response — including
+ * rate-limit 429s and body-parser 400s — carries CORS headers. Registered
+ * anywhere later, those errors surface in browsers as misleading
+ * "CORS errors" hiding the real status code.
+ */
+export function applyCors(app: INestApplication): void {
+  const configService = app.get(ConfigService);
+  const settings = parseCorsSettings(
+    configService.get<string>('CORS_ORIGIN', '*'),
+    configService.get<string>('NODE_ENV', 'development'),
+  );
+  app.enableCors({
+    origin: settings.origin,
+    credentials: settings.credentials,
+  });
 }

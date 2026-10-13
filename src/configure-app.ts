@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { rateLimitMiddleware } from './common/middleware/rate-limit.middleware.js';
 import { validateEnvironment } from './config/env-validation.js';
-import { parseCorsSettings } from './config/cors.util.js';
 
 export async function configureApp(app: INestApplication): Promise<void> {
   const configService = app.get(ConfigService);
@@ -11,16 +10,9 @@ export async function configureApp(app: INestApplication): Promise<void> {
   validateEnvironment(configService);
 
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  // NOTE: CORS is applied by applyCors() in both bootstraps BEFORE any
+  // middleware that can answer with an error (rate limiter, body parsers).
   app.use(rateLimitMiddleware);
-
-  const cors = parseCorsSettings(
-    configService.get<string>('CORS_ORIGIN', '*'),
-    configService.get<string>('NODE_ENV', 'development'),
-  );
-  app.enableCors({
-    origin: cors.origin,
-    credentials: cors.credentials,
-  });
 
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
@@ -40,6 +32,17 @@ export async function configureApp(app: INestApplication): Promise<void> {
       )
       .setVersion('0.1.0')
       .addBearerAuth()
+      .addApiKey(
+        {
+          type: 'apiKey',
+          in: 'header',
+          name: 'X-Organization-Id',
+          description:
+            'Platform admins only: scope the request to a tenant (org id). ' +
+            'Lets one platform session drive the whole org API.',
+        },
+        'org-context',
+      )
       .build();
 
     const document = SwaggerModule.createDocument(app, config);

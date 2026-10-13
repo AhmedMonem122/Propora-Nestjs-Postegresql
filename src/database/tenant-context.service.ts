@@ -30,7 +30,8 @@ export class TenantContextService {
     const organizationId = this.getOrganizationId();
     if (!organizationId) {
       throw new ForbiddenException(
-        'This operation requires an organization context. Platform administrators must act through organization-scoped members.',
+        'This operation requires an organization context. ' +
+          'Platform administrators: pass X-Organization-Id to act within a tenant.',
       );
     }
     return organizationId;

@@ -8,6 +8,8 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PropertyStatus } from '@prisma/client';
+import { Transform } from 'class-transformer';
+import { emptyToUndefined } from '../../common/utils/transform.util.js';
 
 export class CreateBuildingDto {
   @ApiProperty({ example: 'Building A' })
@@ -23,6 +25,7 @@ export class CreateBuildingDto {
   code?: string;
 
   @ApiPropertyOptional({ example: 5 })
+  @Transform(emptyToUndefined)
   @IsInt()
   @IsOptional()
   totalFloors?: number;
@@ -60,6 +63,7 @@ export class UpdateBuildingDto {
   code?: string;
 
   @ApiPropertyOptional({ example: 6 })
+  @Transform(emptyToUndefined)
   @IsInt()
   @IsOptional()
   totalFloors?: number;

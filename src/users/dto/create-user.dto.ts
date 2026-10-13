@@ -48,5 +48,6 @@ export class CreateUserDto {
   @ArrayMinSize(0)
   @ArrayMaxSize(10)
   @IsString({ each: true })
+  @IsOptional()
   roleIds?: string[];
 }

@@ -6,7 +6,6 @@ import {
   IsString,
   IsUrl,
 } from 'class-validator';
-
 export const WEBHOOK_EVENT_CATALOG = [
   'payment.paid',
   'maintenance.assigned',
@@ -30,6 +29,14 @@ export class CreateWebhookEndpointDto {
   @IsArray()
   @IsString({ each: true })
   events?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Create disabled (defaults to active)',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class UpdateWebhookEndpointDto {

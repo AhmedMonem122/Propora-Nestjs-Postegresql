@@ -7,7 +7,8 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { emptyToUndefined } from '../../common/utils/transform.util.js';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   MaintenancePriority,
@@ -92,6 +93,7 @@ export class MaintenanceStatusDto {
 
 export class CloseMaintenanceDto {
   @ApiProperty({ example: 350 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   cost?: number;

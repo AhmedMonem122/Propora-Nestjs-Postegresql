@@ -9,6 +9,8 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UnitStatus } from '@prisma/client';
+import { Transform } from 'class-transformer';
+import { emptyToUndefined } from '../../common/utils/transform.util.js';
 
 export class CreateUnitDto {
   @ApiProperty({ example: 'Apartment 101' })
@@ -37,31 +39,37 @@ export class CreateUnitDto {
   unitTypeId?: string;
 
   @ApiPropertyOptional({ example: 2 })
+  @Transform(emptyToUndefined)
   @IsInt()
   @IsOptional()
   bedrooms?: number;
 
   @ApiPropertyOptional({ example: 1.5 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   bathrooms?: number;
 
   @ApiPropertyOptional({ example: 120.5 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   areaSqm?: number;
 
   @ApiPropertyOptional({ example: 1 })
+  @Transform(emptyToUndefined)
   @IsInt()
   @IsOptional()
   floor?: number;
 
   @ApiPropertyOptional({ example: 4500 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   rentAmount?: number;
 
   @ApiPropertyOptional({ example: 9000 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   depositAmount?: number;
@@ -106,31 +114,37 @@ export class UpdateUnitDto {
   unitTypeId?: string;
 
   @ApiPropertyOptional({ example: 2 })
+  @Transform(emptyToUndefined)
   @IsInt()
   @IsOptional()
   bedrooms?: number;
 
   @ApiPropertyOptional({ example: 1.5 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   bathrooms?: number;
 
   @ApiPropertyOptional({ example: 120.5 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   areaSqm?: number;
 
   @ApiPropertyOptional({ example: 1 })
+  @Transform(emptyToUndefined)
   @IsInt()
   @IsOptional()
   floor?: number;
 
   @ApiPropertyOptional({ example: 4600 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   rentAmount?: number;
 
   @ApiPropertyOptional({ example: 9200 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   depositAmount?: number;

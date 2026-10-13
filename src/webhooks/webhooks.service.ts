@@ -47,6 +47,7 @@ export class WebhooksService {
         url: dto.url,
         secret,
         events: dto.events ?? [],
+        isActive: dto.isActive ?? true,
       },
     });
 

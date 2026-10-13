@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
 import { EventBus } from '../common/events/event-bus.js';
+import { runInBackground } from '../common/utils/background.util.js';
 import { AuditService } from '../audit/audit.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import {
@@ -247,13 +248,15 @@ export class BillingService {
       }),
     ]);
 
-    await this.events.emit('payment.paid', {
-      organizationId: payment.organizationId,
-      paymentId: payment.id,
-      leaseId: payment.leaseId,
-      amount,
-      currency: payment.currency,
-    });
+    runInBackground(
+      this.events.emit('payment.paid', {
+        organizationId: payment.organizationId,
+        paymentId: payment.id,
+        leaseId: payment.leaseId,
+        amount,
+        currency: payment.currency,
+      }),
+    );
 
     return { ...payment, invoiceNo: invoice?.invoiceNo ?? invoiceNo };
   }

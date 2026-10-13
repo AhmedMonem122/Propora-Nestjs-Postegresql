@@ -15,6 +15,7 @@ import { loadRbacSeedCatalog, resolveTemplatePermissions } from '../rbac/rbac-ca
 import { slugify } from '../common/utils/slugify.util.js';
 import { toUserResponse, UserResponseDto } from '../common/dto/user-response.dto.js';
 import { EventBus } from '../common/events/event-bus.js';
+import { runInBackground } from '../common/utils/background.util.js';
 import { AuditService } from '../audit/audit.service.js';
 import {
   ChangePasswordDto,
@@ -164,13 +165,15 @@ export class AuthService {
       ipAddress: ip ?? null,
     });
 
-    await this.events.emit('user.registered', {
-      organizationId: result.organization.id,
-      organizationName: result.organization.name,
-      userId: result.user.id,
-      email,
-      firstName: dto.firstName,
-    });
+    runInBackground(
+      this.events.emit('user.registered', {
+        organizationId: result.organization.id,
+        organizationName: result.organization.name,
+        userId: result.user.id,
+        email,
+        firstName: dto.firstName,
+      }),
+    );
 
     return { tokens, user: userResponse };
   }
@@ -406,12 +409,14 @@ export class AuthService {
       },
     });
 
-    await this.events.emit('user.passwordResetRequested', {
-      email: user.email,
-      firstName: user.firstName,
-      otp,
-      ttlMinutes,
-    });
+    runInBackground(
+      this.events.emit('user.passwordResetRequested', {
+        email: user.email,
+        firstName: user.firstName,
+        otp,
+        ttlMinutes,
+      }),
+    );
   }
 
   async resetPassword(dto: ResetPasswordDto, ip?: string) {
@@ -488,11 +493,13 @@ export class AuthService {
       });
     }
 
-    await this.events.emit('user.passwordChanged', {
-      organizationId: user.organizationId,
-      userId: user.id,
-      email: user.email,
-    });
+    runInBackground(
+      this.events.emit('user.passwordChanged', {
+        organizationId: user.organizationId,
+        userId: user.id,
+        email: user.email,
+      }),
+    );
 
     return { tokens, user: userResponse };
   }
@@ -538,11 +545,13 @@ export class AuthService {
       });
     }
 
-    await this.events.emit('user.passwordChanged', {
-      organizationId: user.organizationId,
-      userId,
-      email: user.email,
-    });
+    runInBackground(
+      this.events.emit('user.passwordChanged', {
+        organizationId: user.organizationId,
+        userId,
+        email: user.email,
+      }),
+    );
   }
 
   async platformLogin(dto: LoginDto, ip?: string) {

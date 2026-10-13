@@ -10,6 +10,14 @@ export function rateLimitMiddleware(
   res: Response,
   next: NextFunction,
 ): void {
+  // Preflights are browser-generated and cheap: they neither consume
+  // budget nor get rejected (a 429 on OPTIONS masks itself as a CORS
+  // error and hides the real problem).
+  if (req.method === 'OPTIONS') {
+    next();
+    return;
+  }
+
   // Auth and general traffic get SEPARATE buckets: sharing one counter
   // would lock users out of login/refresh after a few normal page loads.
   const isAuth = req.path.startsWith('/api/v1/auth');

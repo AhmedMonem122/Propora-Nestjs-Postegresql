@@ -11,6 +11,7 @@ async function bootstrap() {
     const { ExpressAdapter } = await import('@nestjs/platform-express');
     const { AppModule } = await import('../src/app.module.js');
     const { configureApp } = await import('../src/configure-app.js');
+    const { applyCors } = await import('../src/config/cors.util.js');
     const helmet = (await import('helmet')) as any;
     const compression = (await import('compression')) as any;
     const cookieParser = (await import('cookie-parser')) as any;
@@ -20,6 +21,10 @@ async function bootstrap() {
       AppModule,
       new ExpressAdapter(server),
     );
+
+    // CORS first: every response (including rate-limit/body errors) must
+    // carry CORS headers, or browsers misreport them as CORS failures.
+    applyCors(app);
 
     server.use((helmet.default ?? helmet)());
     server.use((compression.default ?? compression)());

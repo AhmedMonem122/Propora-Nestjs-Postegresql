@@ -8,12 +8,14 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { emptyToUndefined } from '../../common/utils/transform.util.js';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentMethod, PaymentStatus, PaymentType } from '@prisma/client';
 
 export class CreatePaymentDto {
   @ApiProperty({ example: 4500 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @Min(0.01)
   amount: number;
@@ -65,6 +67,7 @@ export class CreatePaymentDto {
 
 export class UpdatePaymentDto {
   @ApiPropertyOptional({ example: 4500 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @Min(0.01)
   @IsOptional()

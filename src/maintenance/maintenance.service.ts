@@ -8,6 +8,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { EventBus } from '../common/events/event-bus.js';
+import { runInBackground } from '../common/utils/background.util.js';
 import {
   buildPaginationMeta,
   normalizePagination,
@@ -190,13 +191,15 @@ export class MaintenanceService {
       type: 'INFO',
     });
 
-    await this.events.emit('maintenance.assigned', {
-      organizationId,
-      requestId,
-      assigneeId: assignee.id,
-      assigneeEmail: assignee.email,
-      title: request.title,
-    });
+    runInBackground(
+      this.events.emit('maintenance.assigned', {
+        organizationId,
+        requestId,
+        assigneeId: assignee.id,
+        assigneeEmail: assignee.email,
+        title: request.title,
+      }),
+    );
 
     return updated;
   }

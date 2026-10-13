@@ -9,6 +9,8 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PropertyType } from '@prisma/client';
+import { Transform } from 'class-transformer';
+import { emptyToUndefined } from '../../common/utils/transform.util.js';
 
 export class CreatePropertyDto {
   @ApiProperty({ example: 'Sunrise Residences' })
@@ -59,11 +61,13 @@ export class CreatePropertyDto {
   postalCode?: string;
 
   @ApiPropertyOptional({ example: 30.0444 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   latitude?: number;
 
   @ApiPropertyOptional({ example: 31.2357 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   longitude?: number;
@@ -135,11 +139,13 @@ export class UpdatePropertyDto {
   postalCode?: string;
 
   @ApiPropertyOptional()
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   latitude?: number;
 
   @ApiPropertyOptional()
+  @Transform(emptyToUndefined)
   @IsNumber()
   @IsOptional()
   longitude?: number;

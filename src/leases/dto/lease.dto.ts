@@ -8,7 +8,8 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { emptyToUndefined } from '../../common/utils/transform.util.js';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LeaseStatus, PaymentFrequency } from '@prisma/client';
 
@@ -35,11 +36,13 @@ export class CreateLeaseDto {
   endDate?: Date | null;
 
   @ApiProperty({ example: 4500 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @Min(0.01)
   rentAmount: number;
 
   @ApiPropertyOptional({ example: 9000 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @Min(0)
   @IsOptional()
@@ -86,12 +89,14 @@ export class UpdateLeaseDto {
   endDate?: Date | null;
 
   @ApiPropertyOptional({ example: 4600 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @Min(0.01)
   @IsOptional()
   rentAmount?: number;
 
   @ApiPropertyOptional({ example: 9200 })
+  @Transform(emptyToUndefined)
   @IsNumber()
   @Min(0)
   @IsOptional()

@@ -7,12 +7,17 @@ import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module.js';
 import { configureApp } from './configure-app.js';
+import { applyCors } from './config/cors.util.js';
 import { parseCorsSettings } from './config/cors.util.js';
 import { PrismaService } from './database/prisma.service.js';
 import { attachSocketServer } from './realtime/socket-server.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // CORS first: every response (including rate-limit/body errors) must
+  // carry CORS headers, or browsers misreport them as CORS failures.
+  applyCors(app);
 
   app.use(helmet());
   app.use(compression());

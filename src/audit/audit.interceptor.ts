@@ -80,7 +80,12 @@ export class AuditInterceptor implements NestInterceptor {
     request: {
       ip?: string;
       params?: Record<string, string>;
-      user?: { userId?: string; organizationId?: string | null };
+      user?: {
+        userId?: string;
+        organizationId?: string | null;
+        isPlatformAdmin?: boolean;
+        platformAdminId?: string | null;
+      };
     },
     action: string,
     entity: string | undefined,
@@ -115,6 +120,14 @@ export class AuditInterceptor implements NestInterceptor {
           : typeof fromResult === 'string'
             ? fromResult
             : null,
+      // Platform admins acting via X-Organization-Id leave their own id
+      // in the trail even though the row is scoped to the target tenant.
+      metadata: request.user?.isPlatformAdmin
+        ? {
+            actor: 'platform-admin',
+            platformAdminId: request.user?.platformAdminId ?? null,
+          }
+        : undefined,
       ipAddress: request.ip ?? null,
     });
   }

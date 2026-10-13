@@ -11,6 +11,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { TenantContextService } from '../database/tenant-context.service.js';
 import { RbacService } from '../rbac/rbac.service.js';
 import { EventBus } from '../common/events/event-bus.js';
+import { runInBackground } from '../common/utils/background.util.js';
 import {
   buildPaginationMeta,
   normalizePagination,
@@ -127,13 +128,15 @@ export class UsersService {
       select: { name: true },
     });
 
-    await this.events.emit('user.invited', {
-      organizationId,
-      organizationName: organization?.name ?? 'Propora',
-      email,
-      firstName: dto.firstName,
-      temporaryPassword: dto.password,
-    });
+    runInBackground(
+      this.events.emit('user.invited', {
+        organizationId,
+        organizationName: organization?.name ?? 'Propora',
+        email,
+        firstName: dto.firstName,
+        temporaryPassword: dto.password,
+      }),
+    );
 
     return toUserResponse(user);
   }
