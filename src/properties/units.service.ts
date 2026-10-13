@@ -24,6 +24,46 @@ export class UnitsService {
     private readonly tenantContext: TenantContextService,
   ) {}
 
+  /**
+   * Global unit listing across buildings (powers entity pickers).
+   * Scoped lists (by building / by property) stay for nested views.
+   */
+  async findAll(query: UnitQueryDto = {}) {
+    const organizationId = this.tenantContext.requireOrganizationId();
+    const { page, limit, skip, take } = normalizePagination(query);
+
+    const where: Prisma.UnitWhereInput = {
+      organizationId,
+      ...(query.buildingId ? { buildingId: query.buildingId } : {}),
+      ...(query.propertyId ? { building: { propertyId: query.propertyId } } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { name: { contains: query.search, mode: 'insensitive' } },
+              { unitNumber: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, units] = await this.prisma.$transaction([
+      this.prisma.unit.count({ where }),
+      this.prisma.unit.findMany({
+        where,
+        include: {
+          building: { select: { id: true, name: true, property: { select: { id: true, name: true } } } },
+          unitType: true,
+        },
+        orderBy: { name: 'asc' },
+        skip,
+        take,
+      }),
+    ]);
+
+    return paginated(units, buildPaginationMeta(total, page, limit));
+  }
+
   async findAllByBuilding(buildingId: string, query: UnitQueryDto = {}) {
     const organizationId = this.tenantContext.requireOrganizationId();
 

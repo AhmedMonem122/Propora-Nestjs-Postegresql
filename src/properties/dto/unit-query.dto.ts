@@ -13,4 +13,14 @@ export class UnitQueryDto extends PaginationQueryDto {
   @IsEnum(UnitStatus)
   @IsOptional()
   status?: UnitStatus;
+
+  @ApiPropertyOptional({ description: 'Filter by building (global listing)' })
+  @IsString()
+  @IsOptional()
+  buildingId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by property (global listing)' })
+  @IsString()
+  @IsOptional()
+  propertyId?: string;
 }

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto.js';
 import { toBoolean } from '../../common/utils/query.util.js';
@@ -14,4 +14,9 @@ export class NotificationQueryDto extends PaginationQueryDto {
   @Transform(toBoolean)
   @IsBoolean()
   unreadOnly?: boolean;
+
+  @ApiPropertyOptional({ description: 'Search title and body' })
+  @IsString()
+  @IsOptional()
+  search?: string;
 }

@@ -11,6 +11,7 @@ import {
 
 export interface NotificationListQuery {
   unreadOnly?: boolean;
+  search?: string;
   page?: number;
   limit?: number;
 }
@@ -40,6 +41,14 @@ export class NotificationsService {
       organizationId,
       userId,
       ...(query.unreadOnly ? { readAt: null } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { title: { contains: query.search, mode: 'insensitive' } },
+              { body: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
     };
 
     const [total, notifications] = await this.prisma.$transaction([

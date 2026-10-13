@@ -30,6 +30,14 @@ import { CreateUnitDto, UpdateUnitDto } from './dto/unit.dto.js';
 export class UnitsController {
   constructor(private readonly unitsService: UnitsService) {}
 
+  @Get('units')
+  @RequirePermissions('unit:read')
+  @ApiOperation({ summary: 'List all units (global, filterable — powers pickers)' })
+  @ApiOkResponse({ description: 'Paginated units with building and property' })
+  findAll(@Query() query: UnitQueryDto) {
+    return this.unitsService.findAll(query);
+  }
+
   @Get('buildings/:buildingId/units')
   @RequirePermissions('unit:read')
   @ApiOperation({ summary: 'List units of a building' })
