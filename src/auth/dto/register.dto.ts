@@ -1,19 +1,48 @@
 import {
   IsEmail,
+  IsIn,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  REGISTER_ROLES,
+  type RegisterRole,
+} from '../../common/constants/organization.constants.js';
 
 export class RegisterDto {
+  @ApiPropertyOptional({
+    description:
+      'Join-code path: register straight into an existing organization. ' +
+      'When present, organizationName is ignored.',
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(64)
+  inviteCode?: string;
+
   @ApiProperty({ example: 'Sunrise Properties' })
+  @ValidateIf((o: RegisterDto) => !o.inviteCode)
   @IsString()
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(100)
-  organizationName: string;
+  organizationName?: string;
+
+  @ApiPropertyOptional({
+    enum: REGISTER_ROLES,
+    default: 'OWNER',
+    description:
+      'Requested role. OWNER creates a new organization; any other role ' +
+      'requires an inviteCode. "ADMIN" is not accepted here (400).',
+  })
+  @IsIn(REGISTER_ROLES)
+  @IsOptional()
+  role?: RegisterRole;
 
   @ApiProperty({ example: 'Ahmed' })
   @IsString()

@@ -25,6 +25,7 @@ function createMocks(overrides: Record<string, unknown> = {}) {
         name: 'Test Org',
         slug: 'test-org',
       }),
+      findUnique: vi.fn().mockResolvedValue(null),
     },
     role: {
       create: vi.fn().mockImplementation(({ data }: { data: { name: string } }) =>
@@ -53,6 +54,7 @@ function createMocks(overrides: Record<string, unknown> = {}) {
   const prisma = {
     user: {
       findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
       update: vi.fn().mockResolvedValue({
         id: 'user-1',
         email: 'test@example.com',
@@ -68,7 +70,7 @@ function createMocks(overrides: Record<string, unknown> = {}) {
       create: vi.fn(),
       findUnique: vi.fn().mockResolvedValue(null),
     },
-    role: { create: vi.fn() },
+    role: { create: vi.fn(), findFirst: vi.fn() },
     userRole: { create: vi.fn() },
     refreshToken: {
       create: vi.fn().mockResolvedValue({ id: 'rt-1' }),
@@ -164,7 +166,11 @@ describe('AuthService', () => {
 
       expect(prisma.$transaction).toHaveBeenCalled();
       expect(tx.organization.create).toHaveBeenCalledWith({
-        data: { name: 'Test Org', slug: 'test-org' },
+        data: {
+          name: 'Test Org',
+          slug: 'test-org',
+          inviteCode: expect.any(String),
+        },
       });
       expect(tx.role.create).toHaveBeenCalledTimes(
         catalog.roleTemplates.length,
@@ -193,6 +199,87 @@ describe('AuthService', () => {
           password: 'Password123!',
         }),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('refuses a non-owner role without an invite code', async () => {
+      const { service } = createService();
+
+      await expect(
+        service.register({
+          organizationName: 'Test Org',
+          firstName: 'Test',
+          lastName: 'User',
+          email: 'staff@example.com',
+          password: 'Password123!',
+          role: 'STAFF',
+        }),
+      ).rejects.toThrow(/invite code/i);
+    });
+
+    it('joins an organization with the requested role via invite code', async () => {
+      const { service, prisma } = createService();
+      prisma.organization.findUnique.mockResolvedValue({
+        id: 'org-9',
+        name: 'Joined Org',
+        status: 'ACTIVE',
+      });
+      prisma.role.findFirst.mockResolvedValue({
+        id: 'role-accountant',
+        name: 'ACCOUNTANT',
+      });
+      prisma.user.create.mockResolvedValue({
+        id: 'user-9',
+        organizationId: 'org-9',
+        email: 'staff@example.com',
+      });
+      prisma.user.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue({
+          id: 'user-9',
+          email: 'staff@example.com',
+          firstName: 'New',
+          lastName: 'Staff',
+          phone: null,
+          organizationId: 'org-9',
+          status: 'ACTIVE',
+          userRoles: [{ role: { name: 'ACCOUNTANT' } }],
+        });
+
+      const result = await service.register({
+        inviteCode: 'join-code-123',
+        firstName: 'New',
+        lastName: 'Staff',
+        email: 'staff@example.com',
+        password: 'Password123!',
+        role: 'ACCOUNTANT',
+      });
+
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            organizationId: 'org-9',
+            email: 'staff@example.com',
+          }),
+        }),
+      );
+      expect(result.loginRole).toBe('ACCOUNTANT');
+      expect(result.target).toBe('/dashboard');
+    });
+
+    it('rejects an unknown invite code', async () => {
+      const { service, prisma } = createService();
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.register({
+          inviteCode: 'nope',
+          firstName: 'New',
+          lastName: 'Staff',
+          email: 'staff@example.com',
+          password: 'Password123!',
+          role: 'STAFF',
+        }),
+      ).rejects.toThrow(/invite code/i);
     });
   });
 
@@ -241,6 +328,73 @@ describe('AuthService', () => {
           password: 'Password123!',
         } as never),
       ).rejects.toThrow(/suspended/i);
+    });
+
+    it('accepts login when the requested role is held', async () => {
+      const { service, prisma } = createService();
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        organizationId: 'org-1',
+        email: 'test@example.com',
+        passwordHash: 'hashed-password',
+        status: 'ACTIVE',
+        firstName: 'Test',
+        lastName: 'User',
+        phone: null,
+        organization: { id: 'org-1', name: 'Test Org', status: 'ACTIVE' },
+        userRoles: [{ role: { name: 'ORGANIZATION_OWNER' } }],
+        lastLoginAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await service.login({
+        email: 'test@example.com',
+        password: 'Password123!',
+        role: 'OWNER',
+      } as never);
+
+      expect(result.loginRole).toBe('OWNER');
+      expect(result.target).toBe('/dashboard');
+    });
+
+    it('rejects login when the requested role is not held', async () => {
+      const { service, prisma } = createService();
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        organizationId: 'org-1',
+        email: 'staff@example.com',
+        passwordHash: 'hashed-password',
+        status: 'ACTIVE',
+        firstName: 'Test',
+        lastName: 'User',
+        phone: null,
+        organization: { id: 'org-1', name: 'Test Org', status: 'ACTIVE' },
+        userRoles: [{ role: { name: 'STAFF' } }],
+        lastLoginAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await expect(
+        service.login({
+          email: 'staff@example.com',
+          password: 'Password123!',
+          role: 'OWNER',
+        } as never),
+      ).rejects.toThrow(/does not hold the OWNER role/i);
+    });
+
+    it('refuses ADMIN at the org login (platform session only)', async () => {
+      const { service } = createService();
+
+      await expect(
+        service.login({
+          email: 'admin@propora.io',
+          password: 'Password123!',
+          role: 'ADMIN',
+        } as never),
+      ).rejects.toThrow(/platform session/i);
     });
   });
 

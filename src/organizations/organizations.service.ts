@@ -103,4 +103,67 @@ export class OrganizationsService {
   }) {
     return this.usersService.findAll(query);
   }
+
+  /**
+   * Public join code for this org. Minted lazily so organizations created
+   * before invite codes existed get one on first read — no backfill needed.
+   */
+  async getInviteCode(): Promise<{ inviteCode: string }> {
+    const organizationId = this.tenantContext.requireOrganizationId();
+
+    const existing = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { inviteCode: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    if (existing.inviteCode) {
+      return { inviteCode: existing.inviteCode };
+    }
+
+    const updated = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { inviteCode: await this.uniqueInviteCode() },
+      select: { inviteCode: true },
+    });
+
+    return { inviteCode: updated.inviteCode as string };
+  }
+
+  async regenerateInviteCode(): Promise<{ inviteCode: string }> {
+    const organizationId = this.tenantContext.requireOrganizationId();
+
+    const existing = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    const updated = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { inviteCode: await this.uniqueInviteCode() },
+      select: { inviteCode: true },
+    });
+
+    return { inviteCode: updated.inviteCode as string };
+  }
+
+  private async uniqueInviteCode(): Promise<string> {
+    const { randomBytes } = await import('node:crypto');
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = randomBytes(18).toString('base64url');
+      const clash = await this.prisma.organization.findUnique({
+        where: { inviteCode: code },
+        select: { id: true },
+      });
+      if (!clash) return code;
+    }
+    throw new Error('Could not mint a unique organization invite code');
+  }
 }

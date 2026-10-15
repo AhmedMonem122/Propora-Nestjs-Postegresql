@@ -9,10 +9,16 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import bcryptjs from 'bcryptjs';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { RbacService } from '../rbac/rbac.service.js';
 import { loadRbacSeedCatalog, resolveTemplatePermissions } from '../rbac/rbac-catalog.loader.js';
 import { slugify } from '../common/utils/slugify.util.js';
+import {
+  REGISTER_ROLE_TO_TEMPLATE,
+  TEMPLATE_TO_REGISTER_ROLE,
+  type RegisterRole,
+} from '../common/constants/organization.constants.js';
 import { toUserResponse, UserResponseDto } from '../common/dto/user-response.dto.js';
 import { EventBus } from '../common/events/event-bus.js';
 import { runInBackground } from '../common/utils/background.util.js';
@@ -62,14 +68,20 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto, ip?: string) {
-    // Public signup may only ever create an ORGANIZATION + its owner.
-    // Platform/super-admin accounts are seeded server-side, employees are
-    // invited by organization admins — roles are never self-selected.
+    // Role-aware public signup, two paths:
+    // - OWNER without an inviteCode provisions a brand-new ORGANIZATION and
+    //   becomes its owner (an org must never be ownerless).
+    // - Any other role WITH a valid inviteCode joins that organization with
+    //   the requested role — the secure way to add staff without the owner
+    //   typing accounts in by hand.
+    // "ADMIN" is not in the RegisterDto enum, so class-validator rejects it
+    // with a 400 before this code runs; platform admins are seeded.
     if (this.configService.get('REGISTRATION_ENABLED', 'true') !== 'true') {
       throw new ForbiddenException('Public registration is disabled');
     }
 
     const email = dto.email.toLowerCase();
+    const requestedRole: RegisterRole = dto.role ?? 'OWNER';
 
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
@@ -78,11 +90,21 @@ export class AuthService {
       throw new ConflictException('An account with this email already exists');
     }
 
+    if (dto.inviteCode) {
+      return this.registerJoin(dto, email, requestedRole, ip);
+    }
+
+    if (requestedRole !== 'OWNER') {
+      throw new ForbiddenException(
+        `Registering as ${requestedRole} requires an invite code from that organization`,
+      );
+    }
+
     const passwordHash = await bcryptjs.hash(
       dto.password,
       this.saltRounds(),
     );
-    const slug = await this.generateUniqueSlug(dto.organizationName);
+    const slug = await this.generateUniqueSlug(dto.organizationName as string);
     const catalog = loadRbacSeedCatalog();
     const allPermissionNames = catalog.permissions.map(
       (permission) => permission.name,
@@ -94,7 +116,11 @@ export class AuthService {
     const result = await this.prisma.$transaction(
       async (tx) => {
       const organization = await tx.organization.create({
-        data: { name: dto.organizationName, slug },
+        data: {
+          name: dto.organizationName as string,
+          slug,
+          inviteCode: await this.uniqueInviteCode(tx),
+        },
       });
 
       await tx.organizationSetting.create({
@@ -175,13 +201,110 @@ export class AuthService {
       }),
     );
 
-    return { tokens, user: userResponse };
+    return { tokens, user: userResponse, loginRole: 'OWNER' as RegisterRole, target: '/dashboard' };
+  }
+
+  /**
+   * Join path: the invite code identifies a live organization, the requested
+   * role must exist inside it. Guessing a code only ever yields membership —
+   * never ownership of anything new — and codes are high-entropy + owner
+   * regenerable, so enumeration is impractical.
+   */
+  private async registerJoin(
+    dto: RegisterDto,
+    email: string,
+    requestedRole: RegisterRole,
+    ip?: string,
+  ) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { inviteCode: dto.inviteCode as string },
+    });
+
+    if (!organization || organization.status !== 'ACTIVE') {
+      throw new ForbiddenException('Invalid or expired invite code');
+    }
+
+    const templateName = REGISTER_ROLE_TO_TEMPLATE[requestedRole];
+    const role = await this.prisma.role.findFirst({
+      where: { organizationId: organization.id, name: templateName },
+    });
+
+    if (!role) {
+      throw new ForbiddenException(
+        `The ${requestedRole} role is not available in this organization`,
+      );
+    }
+
+    const passwordHash = await bcryptjs.hash(dto.password, this.saltRounds());
+
+    const user = await this.prisma.user.create({
+      data: {
+        organizationId: organization.id,
+        email,
+        passwordHash,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        status: 'ACTIVE',
+        userRoles: { create: [{ roleId: role.id }] },
+      },
+    });
+
+    const tokens = await this.issueTokens(user);
+    const userResponse = await this.buildUserResponse(user.id);
+
+    await this.audit.log({
+      organizationId: organization.id,
+      userId: user.id,
+      action: 'auth.registerJoin',
+      entityType: 'organization',
+      entityId: organization.id,
+      ipAddress: ip ?? null,
+    });
+
+    runInBackground(
+      this.events.emit('user.registered', {
+        organizationId: organization.id,
+        organizationName: organization.name,
+        userId: user.id,
+        email,
+        firstName: dto.firstName,
+      }),
+    );
+
+    return { tokens, user: userResponse, loginRole: requestedRole, target: '/dashboard' };
+  }
+
+  /** Collision-safe invite-code minting (unique index is the backstop). */
+  private async uniqueInviteCode(
+    tx: Prisma.TransactionClient,
+  ): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = generateInviteCode();
+      const clash = await tx.organization.findUnique({
+        where: { inviteCode: code },
+        select: { id: true },
+      });
+      if (!clash) return code;
+    }
+    throw new Error('Could not mint a unique organization invite code');
   }
 
   async login(dto: LoginDto, ip?: string) {
+    // ADMIN never reaches the org user table: the unified form routes it to
+    // the platform session in the controller, and this guard is the backstop.
+    // (Checked before the user lookup on purpose — admins don't exist here.)
+    if (dto.role === 'ADMIN') {
+      throw new ForbiddenException(
+        'Administrators sign in through the platform session',
+      );
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
-      include: { organization: true },
+      include: {
+        organization: true,
+        userRoles: { include: { role: true } },
+      },
     });
 
     if (!user) {
@@ -221,6 +344,27 @@ export class AuthService {
       );
     }
 
+    // Role dropdown on the unified login form: prove you hold the role you
+    // picked, otherwise a staff member could walk the UI as an owner.
+    let loginRole: RegisterRole = 'OWNER';
+    if (dto.role) {
+      const heldTemplates = new Set(
+        user.userRoles.map((userRole) => userRole.role.name),
+      );
+      const requiredTemplate = REGISTER_ROLE_TO_TEMPLATE[dto.role];
+      if (!heldTemplates.has(requiredTemplate)) {
+        throw new ForbiddenException(
+          `Your account does not hold the ${dto.role} role in ${user.organization?.name ?? 'your organization'}`,
+        );
+      }
+      loginRole = dto.role;
+    } else {
+      const primary = user.userRoles[0]?.role.name;
+      loginRole = primary
+        ? (TEMPLATE_TO_REGISTER_ROLE[primary] ?? 'OWNER')
+        : 'OWNER';
+    }
+
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
@@ -241,7 +385,7 @@ export class AuthService {
       });
     }
 
-    return { tokens, user: userResponse };
+    return { tokens, user: userResponse, loginRole, target: '/dashboard' };
   }
 
   async refresh(refreshToken?: string, ip?: string) {
@@ -798,6 +942,11 @@ export class AuthService {
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+/** High-entropy public organization join codes (regenerable). */
+function generateInviteCode(): string {
+  return randomBytes(18).toString('base64url');
 }
 
 /** Constant-time OTP comparison over the stored SHA-256 hex digests. */

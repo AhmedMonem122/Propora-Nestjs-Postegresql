@@ -62,4 +62,24 @@ export class OrganizationsController {
   listMembers(@Query() query: UserQueryDto) {
     return this.organizationsService.listMembers(query);
   }
+
+  @Get('me/invite-code')
+  @RequirePermissions('organization:read')
+  @ApiOperation({
+    summary: 'Get the public join code (new members register with it)',
+  })
+  @ApiOkResponse({ description: 'Invite code' })
+  getInviteCode() {
+    return this.organizationsService.getInviteCode();
+  }
+
+  @Patch('me/invite-code')
+  @RequirePermissions('organization:update')
+  @ApiOperation({
+    summary: 'Regenerate the join code (invalidates the old one)',
+  })
+  @ApiOkResponse({ description: 'New invite code' })
+  regenerateInviteCode() {
+    return this.organizationsService.regenerateInviteCode();
+  }
 }

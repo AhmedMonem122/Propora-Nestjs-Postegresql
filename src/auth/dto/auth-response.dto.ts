@@ -19,4 +19,16 @@ export class AuthResponseDto {
 
   @ApiProperty({ type: UserResponseDto })
   user: UserResponseDto;
+
+  @ApiProperty({
+    example: 'OWNER',
+    description: 'Verified role this session signed in as',
+  })
+  loginRole: string;
+
+  @ApiProperty({
+    example: '/dashboard',
+    description: 'Where the client should land: /dashboard or /platform',
+  })
+  target: string;
 }

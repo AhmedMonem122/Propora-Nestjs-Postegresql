@@ -1,6 +1,7 @@
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { OrganizationStatus, SubscriptionStatus } from '@prisma/client';
+import { ORGANIZATION_PLANS } from '../../common/constants/organization.constants.js';
 
 export class UpdatePlatformOrganizationDto {
   @ApiPropertyOptional({ enum: OrganizationStatus, example: 'SUSPENDED' })
@@ -8,9 +9,12 @@ export class UpdatePlatformOrganizationDto {
   @IsOptional()
   status?: OrganizationStatus;
 
-  @ApiPropertyOptional({ example: 'PRO', description: 'Billing plan name' })
-  @IsString()
-  @MaxLength(50)
+  @ApiPropertyOptional({
+    enum: ORGANIZATION_PLANS,
+    example: 'GROWTH',
+    description: 'Billing plan name (closed list — rendered as a dropdown)',
+  })
+  @IsIn(ORGANIZATION_PLANS)
   @IsOptional()
   plan?: string;
 

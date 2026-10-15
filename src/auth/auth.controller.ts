@@ -37,14 +37,14 @@ const REFRESH_COOKIE = 'propora_refresh_token';
 const COOKIE_PATH = '/api/v1/auth';
 
 /**
- * Account model (deliberately simple — the secure default for B2B SaaS):
- * - POST /register is PUBLIC but can only create an ORGANIZATION + its owner.
- *   There is no role picker: employees are invited by admins (POST /users),
- *   platform admins are seeded server-side. Self-registering as an admin is
- *   impossible by design.
- * - POST /login takes email + password only (no role dropdown — the server
- *   already knows your roles; GET /me returns them for client-side routing).
- * - Platform admins sign in separately at POST /platform/auth/login.
+ * Account model (unified login, role-aware):
+ * - POST /register is PUBLIC with a role dropdown (OWNER creates an org,
+ *   every other role needs an inviteCode to join). "ADMIN" is rejected by
+ *   validation (400); platform admins are seeded server-side.
+ * - POST /login is UNIFIED with a role dropdown: ADMIN signs into the
+ *   platform session (target /platform), org roles are verified against the
+ *   membership (403 on mismatch) and land on /dashboard.
+ * - POST /platform/auth/login still exists for back-compat.
  */
 @ApiTags('auth')
 @Controller('auth')
@@ -57,7 +57,8 @@ export class AuthController {
   @Public()
   @Post('register')
   @ApiOperation({
-    summary: 'Register a new organization and its owner (public signup)',
+    summary:
+      'Register: OWNER creates an organization, other roles join via inviteCode',
   })
   @ApiCreatedResponse({ type: AuthResponseDto })
   async register(
@@ -65,16 +66,21 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { tokens, user } = await this.authService.register(dto, req.ip);
-    this.setRefreshCookie(res, tokens.refreshToken, tokens.expiresAt);
-    return this.toResponse(tokens, user);
+    const result = await this.authService.register(dto, req.ip);
+    this.setRefreshCookie(res, result.tokens.refreshToken, result.tokens.expiresAt);
+    return {
+      ...this.toResponse(result.tokens, result.user),
+      loginRole: result.loginRole,
+      target: result.target,
+    };
   }
 
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Authenticate with email and password (roles come from GET /me)',
+    summary:
+      'Unified login with role dropdown (ADMIN → platform session, org roles verified)',
   })
   @ApiOkResponse({ type: AuthResponseDto })
   async login(
@@ -82,9 +88,31 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { tokens, user } = await this.authService.login(dto, req.ip);
-    this.setRefreshCookie(res, tokens.refreshToken, tokens.expiresAt);
-    return this.toResponse(tokens, user);
+    // ADMIN on the unified form signs into the PLATFORM session (same
+    // accounts as POST /platform/auth/login) and lands on /platform.
+    if (dto.role === 'ADMIN') {
+      const { tokens, admin } = await this.authService.platformLogin(
+        dto,
+        req.ip,
+      );
+      this.setRefreshCookie(
+        res,
+        tokens.refreshToken,
+        tokens.expiresAt,
+      );
+      return {
+        ...this.toResponse(tokens, admin),
+        loginRole: 'ADMIN',
+        target: '/platform',
+      };
+    }
+    const result = await this.authService.login(dto, req.ip);
+    this.setRefreshCookie(res, result.tokens.refreshToken, result.tokens.expiresAt);
+    return {
+      ...this.toResponse(result.tokens, result.user),
+      loginRole: result.loginRole,
+      target: result.target,
+    };
   }
 
   @Public()
