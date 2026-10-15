@@ -277,14 +277,23 @@ export class AuthService {
   /** Collision-safe invite-code minting (unique index is the backstop). */
   private async uniqueInviteCode(
     tx: Prisma.TransactionClient,
-  ): Promise<string> {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const code = generateInviteCode();
-      const clash = await tx.organization.findUnique({
-        where: { inviteCode: code },
-        select: { id: true },
-      });
-      if (!clash) return code;
+  ): Promise<string | undefined> {
+    // Deploy-order safety: if the inviteCode migration hasn't run yet, the
+    // org is still created — the code is minted lazily on first read.
+    try {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const code = generateInviteCode();
+        const clash = await tx.organization.findUnique({
+          where: { inviteCode: code },
+          select: { id: true },
+        });
+        if (!clash) return code;
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Invite-code minting skipped (migration pending?): ${(error as Error).message}`,
+      );
+      return undefined;
     }
     throw new Error('Could not mint a unique organization invite code');
   }
