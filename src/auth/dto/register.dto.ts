@@ -6,7 +6,6 @@ import {
   IsString,
   MaxLength,
   MinLength,
-  ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
@@ -26,9 +25,8 @@ export class RegisterDto {
   inviteCode?: string;
 
   @ApiProperty({ example: 'Sunrise Properties' })
-  @ValidateIf((o: RegisterDto) => !o.inviteCode)
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MinLength(2)
   @MaxLength(100)
   organizationName?: string;

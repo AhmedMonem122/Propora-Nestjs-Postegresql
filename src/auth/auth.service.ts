@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -97,6 +98,12 @@ export class AuthService {
     if (requestedRole !== 'OWNER') {
       throw new ForbiddenException(
         `Registering as ${requestedRole} requires an invite code from that organization`,
+      );
+    }
+
+    if (!dto.organizationName) {
+      throw new BadRequestException(
+        'organizationName is required to create a new organization',
       );
     }
 
