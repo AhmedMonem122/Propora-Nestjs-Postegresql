@@ -35,6 +35,11 @@ import { AuthResponseDto } from './dto/auth-response.dto.js';
 
 const REFRESH_COOKIE = 'propora_refresh_token';
 const COOKIE_PATH = '/api/v1/auth';
+// Platform session cookies (same names/paths as PlatformAuthController —
+// the unified ADMIN login must plant the cookie the platform refresh
+// endpoint actually reads, or the session dies on the first reload).
+const PLATFORM_REFRESH_COOKIE = 'propora_platform_refresh';
+const PLATFORM_COOKIE_PATH = '/api/v1/platform/auth';
 
 /**
  * Account model (unified login, role-aware):
@@ -95,7 +100,7 @@ export class AuthController {
         dto,
         req.ip,
       );
-      this.setRefreshCookie(
+      this.setPlatformRefreshCookie(
         res,
         tokens.refreshToken,
         tokens.expiresAt,
@@ -297,6 +302,26 @@ export class AuthController {
       sameSite,
       maxAge: expiresAt.getTime() - Date.now(),
       path: COOKIE_PATH,
+    });
+  }
+
+  /**
+   * Plants the platform refresh cookie for unified ADMIN logins. Without
+   * this, the in-memory platform token works until the first reload, then
+   * POST /platform/auth/refresh finds no cookie and the session is gone.
+   */
+  private setPlatformRefreshCookie(
+    res: Response,
+    refreshToken: string,
+    expiresAt: Date,
+  ) {
+    const { sameSite, secure } = this.cookieOptions();
+    res.cookie(PLATFORM_REFRESH_COOKIE, refreshToken, {
+      httpOnly: true,
+      secure,
+      sameSite,
+      maxAge: expiresAt.getTime() - Date.now(),
+      path: PLATFORM_COOKIE_PATH,
     });
   }
 
