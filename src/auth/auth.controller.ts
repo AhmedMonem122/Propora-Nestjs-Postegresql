@@ -201,7 +201,7 @@ export class AuthController {
 
   @ApiBearerAuth()
   @Patch('me')
-  @ApiOperation({ summary: 'Update your own profile (name, phone)' })
+  @ApiOperation({ summary: 'Update your own profile (name, email, phone)' })
   @ApiOkResponse({ description: 'Updated profile' })
   updateMe(
     @CurrentUser() user: AuthenticatedUser,

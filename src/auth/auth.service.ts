@@ -482,6 +482,7 @@ export class AuthService {
       data: {
         firstName: dto.firstName,
         lastName: dto.lastName,
+        ...(dto.email !== undefined ? { email: dto.email } : {}),
         phone: dto.phone,
       },
       include: { userRoles: { include: { role: true } } },
